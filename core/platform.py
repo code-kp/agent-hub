@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 from dotenv import load_dotenv
 
 from core.discovery import DiscoveryService
-from core.interfaces.agent import Agent
+from core.contracts.agent import Agent
+from core.contracts.skills import SkillDefinition
 from core.registry import Register
 from core.runtime import AgentRecord, AgentRuntime
+from core.skills.uploads import create_uploaded_skill
 
 
 class AgentPlatform:
@@ -69,6 +71,22 @@ class AgentPlatform:
             "default_agent_id": sorted(self._records.keys())[0],
             "agents": self.list_agents(refresh=False),
             "tree": self.agent_tree(refresh=False),
+        }
+
+    def refresh_skills(self) -> Dict[str, Any]:
+        discovered = self.discovery.discover_skills()
+        return {
+            "count": len(discovered),
+            "skills": [
+                {
+                    "id": item.skill_id,
+                    "source": item.source,
+                    "type": item.definition.skill_type,
+                    "title": item.definition.title,
+                    "summary": item.definition.summary,
+                }
+                for item in sorted(discovered.values(), key=lambda value: value.skill_id)
+            ],
         }
 
     def list_agents(self, refresh: bool = True) -> List[Dict[str, str]]:
@@ -159,3 +177,49 @@ class AgentPlatform:
             session_id=session_id,
         )
         return resolved_agent, active_session_id, stream
+
+    def upload_skill_markdown(
+        self,
+        *,
+        file_name: str,
+        content: str,
+        uploader_id: str,
+        namespace: str = "",
+        title: Optional[str] = None,
+        summary: Optional[str] = None,
+        skill_type: str = "knowledge",
+        mode: str = "auto",
+        tags: Sequence[str] = (),
+        triggers: Sequence[str] = (),
+        priority: int = 60,
+    ) -> Dict[str, Any]:
+        definition = create_uploaded_skill(
+            skills_root=self.workspace_root / "skills",
+            file_name=file_name,
+            content=content,
+            uploader_id=uploader_id,
+            namespace=namespace,
+            title=title,
+            summary=summary,
+            skill_type=skill_type,
+            mode=mode,
+            tags=tags,
+            triggers=triggers,
+            priority=priority,
+        )
+        self.refresh_skills()
+        return self._serialize_skill(definition)
+
+    def _serialize_skill(self, definition: SkillDefinition) -> Dict[str, Any]:
+        return {
+            "id": definition.id,
+            "source": definition.source,
+            "path": str(definition.path),
+            "title": definition.title,
+            "type": definition.skill_type,
+            "mode": definition.mode,
+            "summary": definition.summary,
+            "tags": list(definition.tags),
+            "triggers": list(definition.triggers),
+            "priority": definition.priority,
+        }

@@ -10,11 +10,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Set, Tuple
 
-from core.interfaces.agent import Agent, AgentModule
-from core.interfaces.skills import SkillDefinition, register_skill
-from core.interfaces.tools import ToolDefinition
+from core.contracts.agent import Agent, AgentModule
+from core.contracts.skills import SkillDefinition, register_skill
+from core.contracts.tools import ToolDefinition
 from core.registry import Register
-from core.skill_parser import parse_skill_file
+from core.skills.parser import parse_skill_file
 
 
 SLUG_RE = re.compile(r"[^a-z0-9]+")
@@ -53,7 +53,21 @@ def _tool_fingerprint(tool: ToolDefinition) -> str:
     except (OSError, TypeError):  # pragma: no cover
         source = ""
     digest = hashlib.sha1(source.encode("utf-8"), usedforsecurity=False).hexdigest()
-    return "|".join([tool.name, tool.description, handler_module, handler_name, digest])
+    return "|".join(
+        [
+            tool.name,
+            tool.description,
+            tool.category,
+            ",".join(tool.use_when),
+            ",".join(tool.avoid_when),
+            tool.returns,
+            str(tool.requires_current_data),
+            ",".join(tool.follow_up_tools),
+            handler_module,
+            handler_name,
+            digest,
+        ]
+    )
 
 
 @dataclass(frozen=True)

@@ -2,8 +2,8 @@ import asyncio
 import time
 import unittest
 
-from core.interfaces.tools import create_tool, current_progress
-from core.progress import EventStream, bind_progress_stream, reset_progress_stream
+from core.contracts.tools import create_tool, current_progress
+from core.stream.progress import EventStream, bind_progress_stream, reset_progress_stream
 
 
 class LiveProgressTest(unittest.IsolatedAsyncioTestCase):
@@ -41,8 +41,9 @@ class LiveProgressTest(unittest.IsolatedAsyncioTestCase):
             task = asyncio.create_task(tool.build_callable()())
 
             first_event = await asyncio.wait_for(stream.queue.get(), timeout=1)
-            self.assertEqual(first_event["type"], "tool_log")
-            self.assertIn("Started collecting information.", first_event["message"])
+            self.assertEqual(first_event["type"], "thinking_step")
+            self.assertEqual(first_event["label"], "Started collecting information.")
+            self.assertEqual(first_event["state"], "running")
             self.assertFalse(task.done(), "progress should arrive before the tool completes")
 
             result = await asyncio.wait_for(task, timeout=2)

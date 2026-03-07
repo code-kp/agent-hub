@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Dict, Optional
 
+from core.stream.messages import build_thinking_message
+
 
 def utc_timestamp() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -95,3 +97,51 @@ def emit_progress_nowait(event_type: str, **payload: Any) -> None:
     stream = _current_stream.get()
     if stream is not None:
         stream.emit_nowait(event_type, payload)
+
+
+async def emit_thinking_step(
+    *,
+    step_id: str,
+    label: str,
+    detail: str = "",
+    state: str = "running",
+    **payload: Any,
+) -> None:
+    await emit_progress(
+        "thinking_step",
+        channel="thinking",
+        step_id=step_id,
+        label=label,
+        detail=detail,
+        state=state,
+        message=build_thinking_message(label, detail),
+        **payload,
+    )
+
+
+def emit_thinking_step_nowait(
+    *,
+    step_id: str,
+    label: str,
+    detail: str = "",
+    state: str = "running",
+    **payload: Any,
+) -> None:
+    emit_progress_nowait(
+        "thinking_step",
+        channel="thinking",
+        step_id=step_id,
+        label=label,
+        detail=detail,
+        state=state,
+        message=build_thinking_message(label, detail),
+        **payload,
+    )
+
+
+async def emit_debug_event(event_type: str, **payload: Any) -> None:
+    await emit_progress(event_type, channel="debug", **payload)
+
+
+def emit_debug_event_nowait(event_type: str, **payload: Any) -> None:
+    emit_progress_nowait(event_type, channel="debug", **payload)

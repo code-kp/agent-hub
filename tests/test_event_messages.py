@@ -1,13 +1,13 @@
 import unittest
 
-from core.event_messages import (
+from core.stream.messages import (
     build_progress_message,
     build_skill_context_message,
     build_tool_completed_message,
     build_tool_selection_message,
     build_tool_started_message,
 )
-from core.skill_store import SkillChunk
+from core.skills.store import SkillChunk
 
 
 class EventMessagesTest(unittest.TestCase):

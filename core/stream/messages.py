@@ -83,6 +83,14 @@ def build_progress_message(message: str, **payload: Any) -> str:
     return "{base} {details}".format(base=base, details=details)
 
 
+def build_thinking_message(label: str, detail: str = "") -> str:
+    headline = ensure_sentence(label or "Working through the request")
+    trailing = ensure_sentence(detail or "")
+    if trailing:
+        return "{headline} {detail}".format(headline=headline, detail=trailing)
+    return headline
+
+
 def build_run_started_message(agent_label: str) -> str:
     label = agent_label.strip() or "the selected agent"
     return "Started a new run with {label}.".format(label=label)

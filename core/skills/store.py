@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence
 
-from core.interfaces.skills import SkillDefinition
-from core.skill_parser import parse_skill_file
+from core.contracts.skills import SkillDefinition
+from core.skills.parser import parse_skill_file
 
 
 TOKEN_RE = re.compile(r"[a-z0-9]{2,}", re.IGNORECASE)
@@ -303,4 +303,3 @@ class SkillStore:
         if len(normalized) > 4 and normalized.endswith("s"):
             return normalized[:-1]
         return normalized
-

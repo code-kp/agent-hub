@@ -3,8 +3,8 @@ import unittest
 from pathlib import Path
 
 from core.discovery import DiscoveryService
-from core.interfaces.skills import SkillDefinition
-from core.interfaces.tools import ToolDefinition
+from core.contracts.skills import SkillDefinition
+from core.contracts.tools import ToolDefinition
 from core.registry import Register
 
 
@@ -37,7 +37,7 @@ Confirm the issue, environment, and recent changes.
             self._write(
                 workspace_root / "tools" / "system.py",
                 """
-from core.interfaces.tools import tool
+from core.contracts.tools import tool
 
 @tool(name="shared_ping", description="Simple ping tool.")
 def shared_ping() -> dict:
@@ -49,7 +49,7 @@ def shared_ping() -> dict:
             self._write(
                 workspace_root / "agents" / "ops" / "bot.py",
                 """
-from core.interfaces.agent import AgentModule, register_agent_class
+from core.contracts.agent import AgentModule, register_agent_class
 
 @register_agent_class
 class OpsBot(AgentModule):

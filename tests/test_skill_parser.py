@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core.skill_parser import parse_skill_file
+from core.skills.parser import parse_skill_file
 
 
 class SkillParserTest(unittest.TestCase):

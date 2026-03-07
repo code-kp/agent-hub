@@ -4,8 +4,9 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Dict, List, Sequence
 
-from core.interfaces.skills import SkillDefinition, ensure_skill_ids, ensure_skill_scopes
-from core.skill_store import SkillChunk, SkillStore
+from core.contracts.skills import SkillDefinition, ensure_skill_ids, ensure_skill_scopes
+from core.skills.store import SkillChunk, SkillStore
+from core.skills.uploads import build_user_upload_scope
 
 
 @dataclass(frozen=True)
@@ -38,6 +39,7 @@ class SkillResolver:
         self,
         *,
         query: str,
+        user_id: str,
         skill_scopes: Sequence[str],
         always_on_skill_ids: Sequence[str] = (),
         max_auto_skills: int = 3,
@@ -46,11 +48,16 @@ class SkillResolver:
     ) -> ResolvedSkillContext:
         self.store.refresh()
         scopes = ensure_skill_scopes(skill_scopes)
+        shared_scopes = ensure_skill_scopes((build_user_upload_scope(user_id),))
         explicit_always_on = set(ensure_skill_ids(always_on_skill_ids))
         allowed_skills = [
             skill
             for skill in self.store.list_skills()
-            if not scopes or any(skill.matches_scope(scope) for scope in scopes)
+            if (
+                not scopes
+                or any(skill.matches_scope(scope) for scope in scopes)
+                or any(skill.matches_scope(scope) for scope in shared_scopes)
+            )
         ]
         if not allowed_skills:
             return ResolvedSkillContext()
@@ -175,4 +182,3 @@ def serialize_resolved_skills(context: ResolvedSkillContext) -> List[Dict[str, s
             }
         )
     return items
-

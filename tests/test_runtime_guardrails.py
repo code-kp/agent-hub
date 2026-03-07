@@ -6,9 +6,9 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from api import _parse_sse_frame
-from core.interfaces.agent import Agent
-from core.progress import EventStream
-from core.skill_resolver import ResolvedSkillContext
+from core.contracts.agent import Agent
+from core.stream.progress import EventStream
+from core.skills.resolver import ResolvedSkillContext
 from core.runtime import AgentRecord, AgentRuntime
 
 
@@ -35,12 +35,12 @@ class RuntimeGuardrailsTest(unittest.IsolatedAsyncioTestCase):
         events = await self._collect_events(stream)
         event_types = [event["type"] for event in events]
 
-        self.assertEqual(
-            event_types[:4],
-            ["run_started", "skill_context_selected", "assistant_message", "error"],
-        )
-        self.assertIn("Google API key is not configured", events[2]["text"])
-        self.assertIn("Google API key is not configured", events[3]["message"])
+        self.assertEqual(event_types[0], "run_started")
+        self.assertIn("thinking_step", event_types)
+        self.assertEqual(event_types[-2], "assistant_message")
+        self.assertEqual(event_types[-1], "error")
+        self.assertIn("Google API key is not configured", events[-2]["text"])
+        self.assertIn("Google API key is not configured", events[-1]["message"])
 
     async def test_model_timeout_emits_error_event(self) -> None:
         runtime = self._build_runtime()
@@ -59,7 +59,9 @@ class RuntimeGuardrailsTest(unittest.IsolatedAsyncioTestCase):
         events = await self._collect_events(stream)
         event_types = [event["type"] for event in events]
 
-        self.assertEqual(event_types[:3], ["run_started", "skill_context_selected", "model_started"])
+        self.assertEqual(event_types[0], "run_started")
+        self.assertIn("model_started", event_types)
+        self.assertIn("thinking_step", event_types)
         self.assertEqual(event_types[-2], "assistant_message")
         self.assertEqual(event_types[-1], "error")
         self.assertEqual(events[-1]["error"], "model_timeout")
@@ -111,10 +113,16 @@ class RuntimeGuardrailsTest(unittest.IsolatedAsyncioTestCase):
         runtime.model_name = "gemini-test"
         runtime._model_source = "default"
         runtime.model_timeout_seconds = 60.0
+        runtime._tool_definitions = {}
+        runtime._tool_callables = {}
         runtime._tool_descriptions = {}
         runtime._resolved_skills = contextvars.ContextVar(
             "resolved_skills_test",
             default=ResolvedSkillContext(),
+        )
+        runtime._preflight_results = contextvars.ContextVar(
+            "preflight_results_test",
+            default=(),
         )
         runtime.skill_store = None
         runtime.skill_resolver = object()
@@ -123,7 +131,18 @@ class RuntimeGuardrailsTest(unittest.IsolatedAsyncioTestCase):
         runtime.agent = object()
         runtime.runner = _NeverRespondingRunner()
         runtime.ensure_session = AsyncMock(return_value=None)
-        runtime._resolve_skills = lambda query: ResolvedSkillContext()
+        runtime._resolve_skills = lambda query, user_id: ResolvedSkillContext()
+        runtime._plan_tool_execution = lambda message, resolved_context: type(
+            "Plan",
+            (),
+            {"intent": type("Intent", (), {
+                "is_temporal": False,
+                "asks_for_exact_time": False,
+                "needs_public_web": False,
+                "should_anchor_to_current_time": False,
+                "reasons": (),
+            })(), "preflight_calls": ()},
+        )()
         return runtime
 
     async def _collect_events(self, stream: EventStream):

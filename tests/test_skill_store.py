@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core.skill_store import SkillStore
+from core.skills.store import SkillStore
 
 
 class SkillStoreTest(unittest.TestCase):

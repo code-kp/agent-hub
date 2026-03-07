@@ -10,19 +10,26 @@ Framework-style platform for creating and running custom agents with:
 - runtime discovery of tools and agents on every API interaction
 - streaming chat/tool/progress events to the UI
 
+## Documentation
+
+- [Core architecture](./core/README.md)
+  - what each core module does
+  - where discovery, runtime, policy, skill resolution, and streaming logic belong
+- [Workspace authoring](./workspace/README.md)
+  - how to define agents, tools, and skills in the shared workspace
+
 ## Structure
 
 ```text
 core/
-  interfaces/
-    agent.py
-    tools.py
+  contracts/
+  skills/
+  stream/
+  policies/
   discovery.py
   platform.py
-  progress.py
   registry.py
   runtime.py
-  skill_store.py
 workspace/
   agents/               # agent modules; directories become namespaces
   tools/                # shared tool modules; loaded before agents
@@ -76,7 +83,7 @@ Directories under `workspace/agents/` are namespaces. For example:
 Example:
 
 ```python
-from core.interfaces.agent import AgentModule, register_agent_class
+from core.contracts.agent import AgentModule, register_agent_class
 
 @register_agent_class
 class MyAgent(AgentModule):
@@ -88,6 +95,12 @@ class MyAgent(AgentModule):
     always_on_skills = ("general.persona",)
 ```
 
+Best practice:
+- keep `system_prompt` focused on behavior and output style
+- keep domain knowledge in skills, not in the prompt
+- use `skill_scopes` for what the agent is allowed to use
+- use `always_on_skills` only for small persona/policy instructions
+
 ## Authoring Tools
 
 Put tools under `workspace/tools/...` and define them with `@tool(...)`.
@@ -96,12 +109,25 @@ All tools are loaded before agents, so any agent can reference any tool by name.
 Example:
 
 ```python
-from core.interfaces.tools import tool
+from core.contracts.tools import current_progress, tool
 
-@tool(description="Return UTC time")
+@tool(
+    description="Return UTC time.",
+    category="time",
+    use_when=("The request asks for current time or date.",),
+    returns="A UTC timestamp in ISO 8601 format.",
+)
 def get_current_utc_time() -> dict:
+    progress = current_progress()
+    progress.think("Checking the current time", detail="Confirming the current UTC time.")
     ...
 ```
+
+Best practice:
+- fill in tool metadata well enough that the runtime and model can make good decisions
+- emit `progress.think(...)` for user-facing narration
+- emit `progress.debug(...)` for developer detail
+- keep hard routing rules out of the tool itself; put those in `core/policies/`
 
 ## Authoring Skills
 
@@ -145,6 +171,13 @@ Supported `mode` values:
 - `auto`
 - `manual`
 
+Best practice:
+- `persona`: short instructions that shape behavior
+- `policy`: rules, constraints, boundaries
+- `workflow`: step-by-step procedures
+- `knowledge`: product docs, FAQs, references, notes
+- keep one skill focused on one concern instead of mixing everything into one file
+
 Agents now declare `skill_scopes` instead of pointing at one folder. The runtime:
 
 - filters skills by scope
@@ -154,14 +187,36 @@ Agents now declare `skill_scopes` instead of pointing at one folder. The runtime
 
 The shared skill tools (`search_skills`, `list_skill_files`, `read_skill_file`) still exist as fallback/debug tools over the full `workspace/skills/` tree.
 
+### Uploading Markdown As Skills
+
+Use the backend upload endpoint to turn any markdown file into a skill:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/skills/upload \
+  -F "file=@/path/to/refund-faq.md" \
+  -F "user_id=browser-user" \
+  -F "namespace=billing" \
+  -F "tags=billing,refund" \
+  -F "triggers=refund,annual plan"
+```
+
+Uploaded files are stored under `workspace/skills/uploads/...` and default to `type=knowledge`, `mode=auto`.
+
+That is the recommended default:
+
+- use `knowledge` for uploaded docs, notes, guides, FAQs, release notes, and product references
+- use `persona` only for short, stable instructions that should shape how an agent behaves
+
+`uploads.<user-id>.*` skills are treated as user-scoped shared knowledge and are eligible for all agents only when the chat uses the same `user_id`.
+
 ## Registry
 
 Everything can be looked up by type and name:
 
 ```python
-from core.interfaces.agent import Agent
-from core.interfaces.skills import SkillDefinition
-from core.interfaces.tools import ToolDefinition
+from core.contracts.agent import Agent
+from core.contracts.skills import SkillDefinition
+from core.contracts.tools import ToolDefinition
 from core.registry import Register
 
 agent = Register.get(Agent, "My Agent")
@@ -179,6 +234,8 @@ Discovery is separate from registry:
 - tool modules are loaded first so agent definitions can reference shared tools by name
 - `core/platform.py` refreshes discovery, updates registry, and rebuilds runtimes as needed
 - `core/registry.py` remains a pure typed registry
+
+For the full platform breakdown, use [core/README.md](./core/README.md).
 
 ## API Entrypoint
 

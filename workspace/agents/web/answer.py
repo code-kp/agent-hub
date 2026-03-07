@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from core.interfaces.agent import AgentModule, register_agent_class
+from core.contracts.agent import AgentModule, register_agent_class
 
 
 @register_agent_class
@@ -14,6 +14,7 @@ class WebAnswer(AgentModule):
         "Prefer the clearest credible source and keep the answer tight."
     )
     tools = (
+        "get_current_utc_time",
         "search_web",
         "fetch_web_page",
     )

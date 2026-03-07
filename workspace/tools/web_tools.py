@@ -8,7 +8,8 @@ from typing import Dict, List, Tuple
 from urllib.parse import parse_qs, quote_plus, urlparse, unquote
 from urllib.request import Request, urlopen
 
-from core.interfaces.tools import current_progress, tool
+from core.contracts.tools import current_progress, tool
+from core.policies.search_strategy import SearchPlan, build_search_plan, build_search_plan_detail
 
 
 DEFAULT_TIMEOUT_SECONDS = 12
@@ -78,29 +79,95 @@ class _DuckDuckGoResultsParser(HTMLParser):
         self._capture_snippet = False
 
 
-@tool(description="Search the public web for recent answers and return concise result snippets.")
+@tool(
+    description="Search the public web for recent answers and return concise result snippets.",
+    category="public_web",
+    use_when=(
+        "The question depends on public information that may have changed.",
+        "You need current events, company updates, prices, schedules, weather, scores, or other live information.",
+    ),
+    avoid_when=(
+        "Internal guidance or direct reasoning already answers the question.",
+    ),
+    returns="Deduplicated web search results gathered from one or more query variants, with titles, URLs, and snippets.",
+    requires_current_data=True,
+    follow_up_tools=("fetch_web_page",),
+)
 def search_web(query: str, max_results: int = 5) -> dict:
     progress = current_progress()
-    progress.comment("Searching the web.", query=query, max_results=max_results)
-
-    html = _http_get(
-        "https://html.duckduckgo.com/html/?q={query}".format(query=quote_plus(query)),
+    search_plan = build_search_plan(query)
+    progress.think(
+        "Checking recent sources",
+        detail=build_search_plan_detail(search_plan),
+        step_id="search_web",
     )
-    results = _parse_duckduckgo_results(html, max_results=max_results)
-    if not results:
-        results = _search_web_instant_answer(query=query, max_results=max_results)
+    progress.debug(
+        "Searching the web.",
+        query=query,
+        effective_query=search_plan.effective_query,
+        queries_used=list(search_plan.queries),
+        max_results=max_results,
+        time_sensitive=search_plan.time_sensitive,
+    )
 
-    progress.comment("Web search completed.", matches=len(results))
-    return {"query": query, "results": results}
+    query_runs = []
+    results = _run_search_queries(
+        search_plan=search_plan,
+        max_results=max_results,
+        query_runs=query_runs,
+        progress=progress,
+    )
+
+    progress.think(
+        "Recent sources checked",
+        detail=_search_completion_detail(query_runs=query_runs, results=results),
+        step_id="search_web",
+        state="done",
+    )
+    progress.debug(
+        "Web search completed.",
+        matches=len(results),
+        effective_query=search_plan.effective_query,
+        queries_used=list(search_plan.queries),
+    )
+    return {
+        "query": query,
+        "effective_query": search_plan.effective_query,
+        "queries_used": list(search_plan.queries),
+        "query_runs": query_runs,
+        "temporal_context": {
+            "time_sensitive": search_plan.time_sensitive,
+            "current_date": search_plan.current_date,
+        },
+        "results": results,
+    }
 
 
-@tool(description="Fetch a web page and extract readable text for summarization.")
+@tool(
+    description="Fetch a web page and extract readable text for summarization.",
+    category="public_web",
+    use_when=(
+        "Search snippets are not enough and you need exact details from a specific public page.",
+    ),
+    returns="Readable page content extracted from the selected URL.",
+)
 def fetch_web_page(url: str, max_chars: int = 5000) -> dict:
     progress = current_progress()
-    progress.comment("Fetching web page.", url=url)
+    progress.think(
+        "Reading the most relevant source",
+        detail=_fetch_page_thinking_detail(url),
+        step_id="fetch_web_page",
+    )
+    progress.debug("Fetching web page.", url=url)
     body = _http_get(url)
     title, content = _extract_page_content(body, max_chars=max_chars)
-    progress.comment("Fetched web page.", title=title or "untitled", characters=len(content))
+    progress.think(
+        "Source details gathered",
+        detail=_fetch_page_completed_detail(url),
+        step_id="fetch_web_page",
+        state="done",
+    )
+    progress.debug("Fetched web page.", title=title or "untitled", characters=len(content))
     return {"url": url, "title": title, "content": content}
 
 
@@ -165,6 +232,59 @@ def _search_web_instant_answer(query: str, max_results: int) -> List[Dict[str, s
     return results[:max_results]
 
 
+def _run_search_queries(
+    *,
+    search_plan: SearchPlan,
+    max_results: int,
+    query_runs: List[Dict[str, object]],
+    progress,
+) -> List[Dict[str, str]]:
+    deduped_results: List[Dict[str, str]] = []
+    seen_urls = set()
+
+    queries = list(search_plan.queries)
+    for index, active_query in enumerate(queries, start=1):
+        progress.think(
+            "Checking recent sources",
+            detail='Searching query {index}/{total}: "{query}".'.format(
+                index=index,
+                total=len(queries),
+                query=active_query,
+            ),
+            step_id="search_web",
+            state="running",
+        )
+        results = _search_web_once(active_query, max_results=max_results)
+        query_runs.append(
+            {
+                "query": active_query,
+                "matches": len(results),
+            }
+        )
+        for item in results:
+            url = str(item.get("url") or "").strip()
+            if not url or url in seen_urls:
+                continue
+            seen_urls.add(url)
+            deduped_results.append(item)
+            if len(deduped_results) >= max_results:
+                break
+        if len(deduped_results) >= max_results:
+            break
+
+    return deduped_results[:max_results]
+
+
+def _search_web_once(query: str, max_results: int) -> List[Dict[str, str]]:
+    html = _http_get(
+        "https://html.duckduckgo.com/html/?q={query}".format(query=quote_plus(query)),
+    )
+    results = _parse_duckduckgo_results(html, max_results=max_results)
+    if not results:
+        results = _search_web_instant_answer(query=query, max_results=max_results)
+    return results[:max_results]
+
+
 def _parse_duckduckgo_results(html: str, max_results: int) -> List[Dict[str, str]]:
     parser = _DuckDuckGoResultsParser()
     parser.feed(html)
@@ -201,4 +321,88 @@ def _clean_text(value: str) -> str:
     return WHITESPACE_RE.sub(" ", text).strip()
 
 
-__all__ = ["search_web", "fetch_web_page"]
+def _build_effective_query(query: str) -> Tuple[str, Dict[str, object]]:
+    plan = build_search_plan(query, max_queries=1)
+    return plan.effective_query, {
+        "time_sensitive": plan.time_sensitive,
+        "current_date": plan.current_date,
+    }
+
+
+def _build_search_queries(
+    *,
+    original_query: str,
+    effective_query: str,
+    temporal_context: Dict[str, object],
+    max_queries: int = 3,
+) -> List[str]:
+    plan = build_search_plan(original_query, max_queries=max_queries)
+    if effective_query and plan.effective_query != _clean_text(effective_query):
+        plan = SearchPlan(
+            original_query=plan.original_query,
+            effective_query=_clean_text(effective_query),
+            queries=plan.queries,
+            time_sensitive=bool(temporal_context.get("time_sensitive")),
+            current_date=str(temporal_context.get("current_date") or plan.current_date),
+        )
+    return list(plan.queries)
+
+
+def _search_thinking_detail(
+    *,
+    original_query: str,
+    effective_query: str,
+    temporal_context: Dict[str, object],
+) -> str:
+    plan = SearchPlan(
+        original_query=_clean_text(original_query),
+        effective_query=_clean_text(effective_query),
+        queries=(_clean_text(effective_query),),
+        time_sensitive=bool(temporal_context.get("time_sensitive")),
+        current_date=str(temporal_context.get("current_date") or "").strip(),
+    )
+    return build_search_plan_detail(plan)
+
+
+def _fetch_page_thinking_detail(url: str) -> str:
+    host = urlparse(str(url or "")).netloc.strip()
+    if host:
+        return "Opening {host} to pull the relevant details.".format(host=host)
+    return "Opening the selected source to pull the relevant details."
+
+
+def _fetch_page_completed_detail(url: str) -> str:
+    host = urlparse(str(url or "")).netloc.strip()
+    if host:
+        return "Collected the relevant details from {host}.".format(host=host)
+    return "Collected the relevant details from the selected source."
+
+
+def _search_completion_detail(
+    *,
+    query_runs: List[Dict[str, object]],
+    results: List[Dict[str, str]],
+) -> str:
+    queries = [
+        '"{query}"'.format(query=str(item.get("query") or "").strip())
+        for item in query_runs
+        if str(item.get("query") or "").strip()
+    ]
+    if not queries:
+        return "No search queries were executed."
+    return "Ran {count} query variant(s): {queries}. Found {matches} unique result(s).".format(
+        count=len(queries),
+        queries=", ".join(queries),
+        matches=len(results),
+    )
+
+
+__all__ = [
+    "search_web",
+    "fetch_web_page",
+    "_build_search_queries",
+    "_build_effective_query",
+    "_extract_page_content",
+    "_parse_duckduckgo_results",
+    "_search_thinking_detail",
+]

@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-from core.interfaces.skills import (
+from core.contracts.skills import (
     SkillDefinition,
     VALID_SKILL_MODES,
     VALID_SKILL_TYPES,
@@ -195,4 +195,3 @@ def _coerce_int(value: Any, *, default: int) -> int:
         return int(value)
     except (TypeError, ValueError):
         return default
-

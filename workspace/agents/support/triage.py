@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from core.interfaces.agent import AgentModule, register_agent_class
+from core.contracts.agent import AgentModule, register_agent_class
 
 
 @register_agent_class

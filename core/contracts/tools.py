@@ -7,8 +7,8 @@ import inspect
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable, List, Optional, Sequence, Union
 
-from core.event_messages import build_error_message, build_progress_message
-from core.progress import emit_progress_nowait
+from core.stream.messages import build_error_message, build_progress_message
+from core.stream.progress import emit_debug_event_nowait, emit_thinking_step_nowait
 from core.registry import Register
 
 
@@ -24,13 +24,34 @@ class ProgressUpdater:
     def __init__(self, tool_name: Optional[str]) -> None:
         self.tool_name = tool_name or "tool"
 
-    def comment(self, message: str, **payload: Any) -> None:
+    def think(
+        self,
+        label: str,
+        *,
+        detail: str = "",
+        step_id: Optional[str] = None,
+        state: str = "running",
+        **payload: Any,
+    ) -> None:
+        emit_thinking_step_nowait(
+            step_id=step_id or self.tool_name,
+            label=label,
+            detail=detail,
+            state=state,
+            tool_name=self.tool_name,
+            **payload,
+        )
+
+    def debug(self, message: str, **payload: Any) -> None:
         body = {
             "tool_name": self.tool_name,
             "message": build_progress_message(message, **payload),
         }
         body.update(payload)
-        emit_progress_nowait("tool_log", **body)
+        emit_debug_event_nowait("tool_log", **body)
+
+    def comment(self, message: str, **payload: Any) -> None:
+        self.think(message, **payload)
 
 
 def current_progress() -> ProgressUpdater:
@@ -44,6 +65,12 @@ class ToolDefinition:
     name: str
     description: str
     handler: Callable[..., Any]
+    category: str = "general"
+    use_when: tuple[str, ...] = ()
+    avoid_when: tuple[str, ...] = ()
+    returns: str = ""
+    requires_current_data: bool = False
+    follow_up_tools: tuple[str, ...] = ()
 
     def build_callable(self) -> Callable[..., Any]:
         handler = self.handler
@@ -58,7 +85,7 @@ class ToolDefinition:
                     result = await asyncio.to_thread(handler, *args, **kwargs)
                 return result
             except Exception as exc:
-                emit_progress_nowait(
+                emit_debug_event_nowait(
                     "tool_log",
                     tool_name=self.name,
                     message=build_error_message(str(exc)),
@@ -78,11 +105,23 @@ def create_tool(
     handler: Callable[..., Any],
     name: Optional[str] = None,
     description: Optional[str] = None,
+    category: str = "general",
+    use_when: Optional[Sequence[str]] = None,
+    avoid_when: Optional[Sequence[str]] = None,
+    returns: str = "",
+    requires_current_data: bool = False,
+    follow_up_tools: Optional[Sequence[str]] = None,
 ) -> ToolDefinition:
     return ToolDefinition(
         name=name or handler.__name__,
         description=(description or inspect.getdoc(handler) or "").strip(),
         handler=handler,
+        category=str(category or "general").strip() or "general",
+        use_when=_normalize_tool_metadata_list(use_when),
+        avoid_when=_normalize_tool_metadata_list(avoid_when),
+        returns=str(returns or "").strip(),
+        requires_current_data=bool(requires_current_data),
+        follow_up_tools=_normalize_tool_metadata_list(follow_up_tools),
     )
 
 
@@ -115,10 +154,26 @@ def resolve_tool(value: ToolLike) -> ToolDefinition:
 def tool(
     name: Optional[str] = None,
     description: Optional[str] = None,
+    category: str = "general",
+    use_when: Optional[Sequence[str]] = None,
+    avoid_when: Optional[Sequence[str]] = None,
+    returns: str = "",
+    requires_current_data: bool = False,
+    follow_up_tools: Optional[Sequence[str]] = None,
     register: bool = True,
 ):
     def decorator(handler: Callable[..., Any]) -> ToolDefinition:
-        definition = create_tool(handler=handler, name=name, description=description)
+        definition = create_tool(
+            handler=handler,
+            name=name,
+            description=description,
+            category=category,
+            use_when=use_when,
+            avoid_when=avoid_when,
+            returns=returns,
+            requires_current_data=requires_current_data,
+            follow_up_tools=follow_up_tools,
+        )
         if register:
             register_tool(definition)
         return definition
@@ -132,3 +187,15 @@ def build_adk_tools(tool_definitions: Sequence[ToolLike]) -> List[Callable[..., 
 
 def ensure_tools(value: Optional[Iterable[ToolLike]]) -> List[ToolDefinition]:
     return [resolve_tool(item) for item in list(value or [])]
+
+
+def _normalize_tool_metadata_list(values: Optional[Sequence[str]]) -> tuple[str, ...]:
+    normalized = []
+    seen = set()
+    for raw in list(values or ()):
+        text = str(raw or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        normalized.append(text)
+    return tuple(normalized)
