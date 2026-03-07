@@ -24,14 +24,16 @@ Recommended:
 - inherit from `AgentModule`
 - register with `@register_agent_class`
 - keep the prompt focused on behavior and synthesis
-- reference tools by name
+- reference only explicit tools by name
 - use `skill_scopes` to define allowed knowledge
 - use `always_on_skills` only for small persona/policy skills
+- let the model decide whether tools are needed; use `execution` only for tool-loop limits
 
 Example:
 
 ```python
 from core.contracts.agent import AgentModule, register_agent_class
+from core.contracts.execution import ExecutionConfig
 
 
 @register_agent_class
@@ -39,9 +41,10 @@ class MyAgent(AgentModule):
     name = "My Agent"
     description = "What it does"
     system_prompt = "How it should behave"
-    tools = ("get_current_utc_time", "search_skills")
+    tools = ("get_current_utc_time",)
     skill_scopes = ("general",)
     always_on_skills = ("general.persona",)
+    execution = ExecutionConfig(max_tool_calls=6)
 ```
 
 Better prompt shape:
@@ -54,49 +57,55 @@ Avoid:
 - putting large policy/knowledge blocks into the prompt
 - relying on one giant always-on skill for all behavior
 
+Implicit framework tools:
+- `search_skills` is automatically available through the default core toolset
+- do not add it explicitly unless you are intentionally overriding the default model
+- reserve `tools = (...)` for explicit capabilities like web search, time, APIs, or integrations
+
 ## Best Way To Define A Tool
 
 Put tools in `workspace/tools/*.py`.
 
 Recommended:
-- use `@tool(...)`
+- use `ToolModule`
 - give the tool a concrete description
 - set metadata like `category`, `use_when`, `avoid_when`, and `returns`
-- use `current_progress()` and emit:
+- use `self.progress` and emit:
   - `progress.think(...)` for user-facing narration
   - `progress.debug(...)` for raw execution detail
 
 Example:
 
 ```python
-from core.contracts.tools import current_progress, tool
+from core.contracts.tools import ToolModule, register_tool_class
 
 
-@tool(
-    description="Return the current UTC time.",
-    category="time",
-    use_when=(
+@register_tool_class
+class GetCurrentUtcTimeTool(ToolModule):
+    name = "get_current_utc_time"
+    description = "Return the current UTC time."
+    category = "time"
+    use_when = (
         "The request asks for the current time or date.",
         "A time-sensitive answer should be anchored before searching fresh sources.",
-    ),
-    returns="A UTC timestamp in ISO 8601 format.",
-    requires_current_data=True,
-    follow_up_tools=("search_web",),
-)
-def get_current_utc_time() -> dict:
-    progress = current_progress()
-    progress.think(
-        "Checking the current time",
-        detail="Confirming the current UTC time before answering.",
-        step_id="get_current_utc_time",
     )
-    ...
+    returns = "A UTC timestamp in ISO 8601 format."
+    requires_current_data = True
+    follow_up_tools = ("search_web",)
+
+    def run(self) -> dict:
+        self.progress.think(
+            "Checking the current time",
+            detail="Confirming the current UTC time before answering.",
+            step_id="get_current_utc_time",
+        )
+        ...
 ```
 
 Avoid:
 - generic descriptions like "search things"
 - exposing raw dicts as user-facing progress text
-- placing platform guarantees inside the tool handler
+- placing platform-wide execution limits or safety guarantees inside the tool handler
 
 ## Best Way To Define A Skill
 

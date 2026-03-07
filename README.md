@@ -14,7 +14,7 @@ Framework-style platform for creating and running custom agents with:
 
 - [Core architecture](./core/README.md)
   - what each core module does
-  - where discovery, runtime, policy, skill resolution, and streaming logic belong
+  - where discovery, runtime, execution guardrails, skill resolution, and streaming logic belong
 - [Workspace authoring](./workspace/README.md)
   - how to define agents, tools, and skills in the shared workspace
 
@@ -23,13 +23,14 @@ Framework-style platform for creating and running custom agents with:
 ```text
 core/
   contracts/
+  builtin_tools/
   skills/
   stream/
-  policies/
+  guardrails.py
   discovery.py
   platform.py
   registry.py
-  runtime.py
+  runtime/
 workspace/
   agents/               # agent modules; directories become namespaces
   tools/                # shared tool modules; loaded before agents
@@ -84,15 +85,17 @@ Example:
 
 ```python
 from core.contracts.agent import AgentModule, register_agent_class
+from core.contracts.execution import ExecutionConfig
 
 @register_agent_class
 class MyAgent(AgentModule):
     name = "My Agent"
     description = "What it does"
     system_prompt = "How it should behave"
-    tools = ("get_current_utc_time", "search_skills")  # tool names from global registry
+    tools = ("get_current_utc_time",)  # explicit tools only
     skill_scopes = ("general", "support")
     always_on_skills = ("general.persona",)
+    execution = ExecutionConfig(max_tool_calls=6)
 ```
 
 Best practice:
@@ -100,34 +103,46 @@ Best practice:
 - keep domain knowledge in skills, not in the prompt
 - use `skill_scopes` for what the agent is allowed to use
 - use `always_on_skills` only for small persona/policy instructions
+- rely on implicit framework tools like `search_skills` instead of listing them on every agent
+- let the model decide whether tools are needed; use `execution` only for guardrails like tool-call budgets
 
 ## Authoring Tools
 
-Put tools under `workspace/tools/...` and define them with `@tool(...)`.
+Put tools under `workspace/tools/...` and define them as `ToolModule` classes.
 All tools are loaded before agents, so any agent can reference any tool by name.
 
 Example:
 
 ```python
-from core.contracts.tools import current_progress, tool
+from core.contracts.tools import ToolModule, register_tool_class
 
-@tool(
-    description="Return UTC time.",
-    category="time",
-    use_when=("The request asks for current time or date.",),
-    returns="A UTC timestamp in ISO 8601 format.",
-)
-def get_current_utc_time() -> dict:
-    progress = current_progress()
-    progress.think("Checking the current time", detail="Confirming the current UTC time.")
-    ...
+
+@register_tool_class
+class GetCurrentUtcTimeTool(ToolModule):
+    name = "get_current_utc_time"
+    description = "Return UTC time."
+    category = "time"
+    use_when = ("The request asks for current time or date.",)
+    returns = "A UTC timestamp in ISO 8601 format."
+
+    def run(self) -> dict:
+        self.progress.think(
+            "Checking the current time",
+            detail="Confirming the current UTC time.",
+            step_id="get_current_utc_time",
+        )
+        ...
 ```
 
 Best practice:
 - fill in tool metadata well enough that the runtime and model can make good decisions
 - emit `progress.think(...)` for user-facing narration
 - emit `progress.debug(...)` for developer detail
-- keep hard routing rules out of the tool itself; put those in `core/policies/`
+- keep tool-specific planning with the tool itself; keep only hard execution limits in the framework
+
+Framework-provided common tools:
+- `search_skills` is included automatically for agents by the core toolset
+- agent authors should only list explicit tools that expand the agent's capabilities, such as web search, time, APIs, or side-effecting integrations
 
 ## Authoring Skills
 
@@ -185,7 +200,7 @@ Agents now declare `skill_scopes` instead of pointing at one folder. The runtime
 - chooses additional skills per request using metadata + lexical matching
 - injects summaries first and only adds detailed excerpts for the top matches
 
-The shared skill tools (`search_skills`, `list_skill_files`, `read_skill_file`) still exist as fallback/debug tools over the full `workspace/skills/` tree.
+The shared skill tools (`search_skills`, `list_skill_files`, `read_skill_file`) are framework-provided tools in `core/` rather than workspace tools. `search_skills` is available to agents through the default core toolset.
 
 ### Uploading Markdown As Skills
 
