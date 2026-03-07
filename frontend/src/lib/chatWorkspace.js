@@ -26,6 +26,11 @@ export function createAssistantMessage(metadata = {}) {
 }
 
 function formatToolEvent(type, payload) {
+  if (type === "thinking_step") {
+    const label = payload.label || "Working through the request";
+    const detail = payload.detail || "";
+    return detail ? `${label}\n${detail}` : label;
+  }
   if (type === "tool_selection_reason") {
     return `${payload.tool_name || "tool"}\n${payload.reason || "Selected by model."}`;
   }
@@ -70,7 +75,12 @@ export function formatEventBody(type, payload) {
 export function createThinkingEvent(type, payload = {}) {
   return {
     id: crypto.randomUUID(),
+    stepId: payload.step_id || "",
     type,
+    channel: payload.channel || "thinking",
+    label: payload.label || "",
+    detail: payload.detail || "",
+    state: payload.state || "",
     body: formatEventBody(type, payload),
     timestamp: payload.timestamp,
   };

@@ -2,10 +2,17 @@ import React from "react";
 
 import { AgentPickerDrawer } from "./components/AgentPickerDrawer";
 import { ChatPanel } from "./components/ChatPanel";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { LoadingScreen } from "./components/LoadingScreen";
 import { NavigationRail } from "./components/NavigationRail";
+import { SettingsModal } from "./components/SettingsModal";
+import { USER_ID_STORAGE_KEY, resolveInitialUserId, sanitizeUserId } from "./lib/preferences";
 import { useWorkspaceChat } from "./hooks/useWorkspaceChat";
-import { THEME_STORAGE_KEY, applyTheme, resolveInitialTheme } from "./lib/theme";
+import {
+  THEME_MODE_STORAGE_KEY,
+  applyTheme,
+  resolveInitialThemeMode,
+} from "./lib/theme";
 
 const SIDEBAR_WIDTH_STORAGE_KEY = "agent-hub-sidebar-width";
 const DEFAULT_SIDEBAR_WIDTH = 248;
@@ -30,9 +37,11 @@ function resolveInitialSidebarWidth() {
 }
 
 export function App() {
+  const [themeMode, setThemeMode] = React.useState(resolveInitialThemeMode);
+  const [userId, setUserId] = React.useState(resolveInitialUserId);
   const [isAgentPickerOpen, setIsAgentPickerOpen] = React.useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
   const [agentPickerMode, setAgentPickerMode] = React.useState("switch");
-  const [theme, setTheme] = React.useState(resolveInitialTheme);
   const [sidebarWidth, setSidebarWidth] = React.useState(resolveInitialSidebarWidth);
   const [isResizingSidebar, setIsResizingSidebar] = React.useState(false);
   const resizeStateRef = React.useRef(null);
@@ -54,16 +63,34 @@ export function App() {
     refreshAgentDirectory,
     searchText,
     setSearchText,
-  } = useWorkspaceChat();
+  } = useWorkspaceChat(userId);
 
   React.useEffect(() => {
-    applyTheme(theme);
-    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
-  }, [theme]);
+    applyTheme(themeMode);
+    window.localStorage.setItem(THEME_MODE_STORAGE_KEY, themeMode);
+
+    if (themeMode !== "system") {
+      return undefined;
+    }
+
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleChange = () => {
+      applyTheme("system");
+    };
+
+    mediaQuery.addEventListener("change", handleChange);
+    return () => {
+      mediaQuery.removeEventListener("change", handleChange);
+    };
+  }, [themeMode]);
 
   React.useEffect(() => {
     window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(sidebarWidth));
   }, [sidebarWidth]);
+
+  React.useEffect(() => {
+    window.localStorage.setItem(USER_ID_STORAGE_KEY, sanitizeUserId(userId));
+  }, [userId]);
 
   React.useEffect(() => {
     if (!isResizingSidebar) {
@@ -117,6 +144,15 @@ export function App() {
     setIsAgentPickerOpen(false);
     setSearchText("");
   }, [setSearchText]);
+  const openSettings = React.useCallback(() => {
+    setIsSettingsOpen(true);
+  }, []);
+  const closeSettings = React.useCallback(() => {
+    setIsSettingsOpen(false);
+  }, []);
+  const handleUserIdChange = React.useCallback((nextUserId) => {
+    setUserId(sanitizeUserId(nextUserId));
+  }, []);
   const handleAgentPickerSelect = React.useCallback((agentId) => {
     if (agentPickerMode === "new_chat") {
       onNewChat(agentId);
@@ -178,9 +214,8 @@ export function App() {
         activeChatId={activeChat?.id || ""}
         chats={chats}
         onNewChat={openAgentPickerForNewChat}
+        onOpenSettings={openSettings}
         onSelectChat={onSelectChat}
-        onThemeChange={setTheme}
-        theme={theme}
       />
       <div
         className="sidebar-resize-handle"
@@ -198,18 +233,22 @@ export function App() {
 
       <section className="workspace">
         {error ? <div className="error-banner">{error}</div> : null}
-        <ChatPanel
-          agentId={activeAgentId}
-          agentName={activeAgent?.name || ""}
-          agentDescription={activeAgent?.description || ""}
-          chatTitle={activeChat?.title || ""}
-          sessionId={activeSessionId}
-          messages={activeChat?.messages || []}
-          isSending={isSending}
-          disabled={!activeAgentId || isSending}
-          onOpenAgentPicker={openAgentPickerForSwitch}
-          onSend={onSend}
-        />
+        <ErrorBoundary
+          resetKey={`${activeChat?.id || ""}:${activeChat?.messages?.length || 0}:${activeAgentId}`}
+        >
+          <ChatPanel
+            agentId={activeAgentId}
+            agentName={activeAgent?.name || ""}
+            agentDescription={activeAgent?.description || ""}
+            chatTitle={activeChat?.title || ""}
+            sessionId={activeSessionId}
+            messages={activeChat?.messages || []}
+            isSending={isSending}
+            disabled={!activeAgentId || isSending}
+            onOpenAgentPicker={openAgentPickerForSwitch}
+            onSend={onSend}
+          />
+        </ErrorBoundary>
       </section>
 
       <AgentPickerDrawer
@@ -222,6 +261,14 @@ export function App() {
         onSelectAgent={handleAgentPickerSelect}
         searchText={searchText}
         onSearchTextChange={setSearchText}
+      />
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={closeSettings}
+        themeMode={themeMode}
+        onThemeModeChange={setThemeMode}
+        userId={userId}
+        onUserIdChange={handleUserIdChange}
       />
     </main>
   );

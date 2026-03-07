@@ -2,22 +2,15 @@ import React from "react";
 
 import { ExecutionSteps } from "./ExecutionSteps";
 import { MarkdownContent } from "./MarkdownContent";
-
-function formatTime(value) {
-  if (!value) {
-    return "";
-  }
-  return new Date(value).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+import { formatTime, toDateTimeAttr } from "../lib/time";
 
 export function MessageItem({ message }) {
   const isUser = message.role === "user";
-  const timestamp = message.createdAt ? new Date(message.createdAt).toISOString() : undefined;
+  const timestamp = toDateTimeAttr(message.createdAt);
   const assistantLabel = message.agentName || message.agentId || "Assistant";
   const targetLabel = message.targetAgentName || message.targetAgentId || "";
+  const showExecution = !isUser && (Boolean(message.thinkingActive) || Boolean((message.thinking || []).length));
+  const assistantText = message.text || (!showExecution && message.streaming ? "Working through the request..." : "");
 
   return (
     <article className={isUser ? "message-row row-user" : "message-row row-assistant"}>
@@ -33,15 +26,13 @@ export function MessageItem({ message }) {
           <time dateTime={timestamp}>{formatTime(message.createdAt)}</time>
         </header>
         <div className={isUser ? "message-card user-message" : "message-card assistant-message"}>
-          <MarkdownContent
-            text={message.text || (message.streaming ? "Working through the request..." : "")}
-          />
-          {!isUser ? (
+          {showExecution ? (
             <ExecutionSteps
               events={message.thinking || []}
               active={Boolean(message.thinkingActive)}
             />
           ) : null}
+          {isUser || assistantText ? <MarkdownContent text={assistantText} /> : null}
         </div>
       </div>
     </article>

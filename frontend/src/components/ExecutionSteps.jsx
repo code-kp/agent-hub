@@ -1,15 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-
-function formatTime(value) {
-  if (!value) {
-    return "";
-  }
-  return new Date(value).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-}
+import { formatTime, toDateTimeAttr } from "../lib/time";
 
 function prettyType(type) {
   return (type || "event")
@@ -29,33 +19,84 @@ function summarizeBody(body) {
     .slice(0, 160);
 }
 
+function getEventHeading(event) {
+  if (!event) {
+    return "Working through the request";
+  }
+  return event.label || prettyType(event.type) || "Working through the request";
+}
+
+function getEventSummary(event) {
+  if (!event) {
+    return "";
+  }
+  return summarizeBody(event.detail || event.body || "");
+}
+
 export function ExecutionSteps({ events, active }) {
   const [expanded, setExpanded] = useState(false);
+  const [isSettling, setIsSettling] = useState(false);
   const [isCollapsing, setIsCollapsing] = useState(false);
   const listRef = useRef(null);
-  const collapseTimeoutRef = useRef(null);
+  const collapseStartTimeoutRef = useRef(null);
+  const collapseEndTimeoutRef = useRef(null);
   const previousActiveRef = useRef(active);
   const previousEventCountRef = useRef(events.length);
   const latestEvent = events[events.length - 1] || null;
-  const liveEvents = events.slice(-4);
-  const visibleEvents = active || expanded ? events : liveEvents;
-  const hiddenCount = Math.max(events.length - liveEvents.length, 0);
-  const latestSummary = summarizeBody(latestEvent?.body);
-  const showPanel = active || expanded || isCollapsing;
-  const showCollapsedSummary = !active && !expanded && !isCollapsing;
+  const recentEvents = events.slice(-4);
+  const visibleEvents = expanded ? events : recentEvents;
+  const hiddenCount = Math.max(events.length - recentEvents.length, 0);
+  const backgroundEvents = events.slice(0, -1);
+  const visibleBackgroundEvents = backgroundEvents.slice(-6);
+  const hiddenBackgroundCount = Math.max(backgroundEvents.length - visibleBackgroundEvents.length, 0);
+  const latestSummary = getEventSummary(latestEvent);
+  const showPanel = active || expanded || isSettling || isCollapsing;
+  const showFocusedLayout = active || isSettling || isCollapsing;
+  const showCollapsedSummary = !active && !expanded && !isSettling && !isCollapsing && events.length > 0;
+  const currentHeading = latestEvent
+    ? getEventHeading(latestEvent)
+    : active
+      ? "Starting request"
+      : "Execution complete";
+  const currentSummary = latestEvent
+    ? latestSummary || (active ? "Waiting for the next progress update." : "Response completed.")
+    : active
+      ? "Connecting to the selected agent and waiting for the first progress update."
+      : "Response completed.";
 
-  const startCollapse = () => {
-    window.clearTimeout(collapseTimeoutRef.current);
-    setExpanded(false);
+  const clearCollapseTimers = () => {
+    window.clearTimeout(collapseStartTimeoutRef.current);
+    window.clearTimeout(collapseEndTimeoutRef.current);
+  };
+
+  const beginCollapseAnimation = () => {
+    setIsSettling(false);
     setIsCollapsing(true);
-    collapseTimeoutRef.current = window.setTimeout(() => {
+    collapseEndTimeoutRef.current = window.setTimeout(() => {
       setIsCollapsing(false);
     }, 420);
   };
 
+  const scheduleCollapse = (delay = 0) => {
+    clearCollapseTimers();
+    setExpanded(false);
+
+    if (delay > 0) {
+      setIsSettling(true);
+      collapseStartTimeoutRef.current = window.setTimeout(() => {
+        beginCollapseAnimation();
+      }, delay);
+      return;
+    }
+
+    setIsSettling(false);
+    beginCollapseAnimation();
+  };
+
   useEffect(() => {
-    if (latestEvent?.type === "error") {
-      window.clearTimeout(collapseTimeoutRef.current);
+    if (latestEvent?.state === "error" || latestEvent?.type === "error") {
+      clearCollapseTimers();
+      setIsSettling(false);
       setIsCollapsing(false);
       setExpanded(true);
     }
@@ -77,30 +118,32 @@ export function ExecutionSteps({ events, active }) {
 
   useEffect(() => {
     if (active) {
-      window.clearTimeout(collapseTimeoutRef.current);
+      clearCollapseTimers();
+      setIsSettling(false);
       setIsCollapsing(false);
-    } else if (previousActiveRef.current && events.length && !expanded) {
-      startCollapse();
+    } else if (previousActiveRef.current && !expanded) {
+      scheduleCollapse(events.length ? 760 : 0);
     }
 
     previousActiveRef.current = active;
   }, [active, events.length, expanded]);
 
   useEffect(() => () => {
-    window.clearTimeout(collapseTimeoutRef.current);
+    clearCollapseTimers();
   }, []);
 
-  if (!events.length) {
+  if (!events.length && !active) {
     return null;
   }
 
   const onToggleExpanded = () => {
     if (expanded) {
-      startCollapse();
+      scheduleCollapse(0);
       return;
     }
 
-    window.clearTimeout(collapseTimeoutRef.current);
+    clearCollapseTimers();
+    setIsSettling(false);
     setIsCollapsing(false);
     setExpanded(true);
   };
@@ -111,26 +154,29 @@ export function ExecutionSteps({ events, active }) {
         "execution-steps",
         active ? "live" : "",
         expanded ? "expanded" : "",
+        isSettling ? "settling" : "",
         isCollapsing ? "collapsing" : "",
         showCollapsedSummary ? "collapsed" : "",
       ].filter(Boolean).join(" ")}
     >
-      <div className={active ? "execution-panel live" : "execution-panel"}>
+      <div className={showFocusedLayout ? "execution-panel live" : "execution-panel"}>
         <header className="execution-header">
           <div className="execution-status">
             <span className={active ? "execution-badge live" : "execution-badge"}>
-              {active ? "Executing" : "Execution steps"}
+              {showFocusedLayout
+                ? active
+                  ? "Running in background"
+                  : "Execution complete"
+                : "Execution steps"}
             </span>
-            <div className="execution-summary">
-              <strong>{active ? prettyType(latestEvent?.type) || "Preparing" : `${events.length} steps captured`}</strong>
-              <span>
-                {active
-                  ? latestSummary || "Waiting for the next progress update."
-                  : latestSummary || "Response completed."}
-              </span>
-            </div>
+            {!showFocusedLayout ? (
+              <div className="execution-summary">
+                <strong>{events.length} steps captured</strong>
+                <span>{latestSummary || "Response completed."}</span>
+              </div>
+            ) : null}
           </div>
-          {!active ? (
+          {!showFocusedLayout ? (
             <button
               type="button"
               className="execution-toggle"
@@ -140,50 +186,119 @@ export function ExecutionSteps({ events, active }) {
               {expanded ? "Hide" : `Show all ${events.length}`}
             </button>
           ) : (
-            <span className="execution-live-pill">Live</span>
+            <span className={active ? "execution-live-pill" : "execution-live-pill done"}>
+              {active ? "Live" : "Done"}
+            </span>
           )}
         </header>
 
-        <ol
-          className={active ? "execution-list live" : "execution-list"}
-          ref={listRef}
-        >
-          {visibleEvents.map((event, index) => {
-            const absoluteIndex = expanded ? index : events.length - visibleEvents.length + index;
-            const isLatest = absoluteIndex === events.length - 1;
-            const isError = event.type === "error";
-            const preview = summarizeBody(event.body);
-
-            return (
-              <li
-                key={event.id}
-                className={[
-                  "execution-item",
-                  isLatest ? "latest" : "",
-                  isError ? "error" : "",
-                  active && isLatest ? "live" : "",
-                ].filter(Boolean).join(" ")}
+        {showFocusedLayout ? (
+          <>
+            <section className={active ? "execution-current live" : "execution-current"}>
+              <div
+                key={latestEvent?.id || (active ? "pending" : "complete")}
+                className="execution-current-body"
               >
-                <div className="execution-rail" aria-hidden="true">
-                  <span className="execution-node" />
-                  {absoluteIndex < events.length - 1 ? <span className="execution-line" /> : null}
+                <div className="execution-current-topline">
+                  <span className="execution-current-kicker">
+                    <span className="execution-current-indicator" aria-hidden="true" />
+                    {active ? "Current activity" : "Latest activity"}
+                  </span>
+                  <time dateTime={toDateTimeAttr(latestEvent?.timestamp)}>
+                    {formatTime(latestEvent?.timestamp, { withSeconds: true })}
+                  </time>
                 </div>
-                <div className="execution-step">
-                  <div className="execution-step-header">
-                    <strong>{prettyType(event.type)}</strong>
-                    <time dateTime={event.timestamp ? new Date(event.timestamp).toISOString() : undefined}>
-                      {formatTime(event.timestamp)}
-                    </time>
-                  </div>
-                  {preview ? <p className="execution-preview">{preview}</p> : null}
-                  {expanded ? <div className="execution-detail">{event.body}</div> : null}
-                </div>
-              </li>
-            );
-          })}
-        </ol>
+                <strong>{currentHeading}</strong>
+                <p>{currentSummary}</p>
+              </div>
+            </section>
 
-        {!active && !expanded && hiddenCount > 0 ? (
+            {visibleBackgroundEvents.length ? (
+              <div className="execution-history">
+                <div className="execution-history-header">
+                  <span>Recent updates</span>
+                  {hiddenBackgroundCount > 0 ? (
+                    <span>{hiddenBackgroundCount} earlier</span>
+                  ) : null}
+                </div>
+
+                <ol className="execution-list live" ref={listRef}>
+                  {visibleBackgroundEvents.map((event, index) => {
+                    const absoluteIndex = backgroundEvents.length - visibleBackgroundEvents.length + index;
+                    const isLatest = absoluteIndex === backgroundEvents.length - 1;
+                    const isError = event.state === "error" || event.type === "error";
+                    const preview = getEventSummary(event);
+
+                    return (
+                      <li
+                        key={event.id}
+                        className={[
+                          "execution-item",
+                          isLatest ? "latest" : "",
+                          isError ? "error" : "",
+                        ].filter(Boolean).join(" ")}
+                      >
+                        <div className="execution-rail" aria-hidden="true">
+                          <span className="execution-node" />
+                          {absoluteIndex < backgroundEvents.length - 1 ? <span className="execution-line" /> : null}
+                        </div>
+                        <div className="execution-step">
+                          <div className="execution-step-header">
+                            <strong>{getEventHeading(event)}</strong>
+                            <time dateTime={toDateTimeAttr(event.timestamp)}>
+                              {formatTime(event.timestamp, { withSeconds: true })}
+                            </time>
+                          </div>
+                          {preview ? <p className="execution-preview">{preview}</p> : null}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <ol
+            className="execution-list"
+            ref={listRef}
+          >
+            {visibleEvents.map((event, index) => {
+              const absoluteIndex = expanded ? index : events.length - visibleEvents.length + index;
+              const isLatest = absoluteIndex === events.length - 1;
+              const isError = event.state === "error" || event.type === "error";
+              const preview = getEventSummary(event);
+
+              return (
+                <li
+                  key={event.id}
+                  className={[
+                    "execution-item",
+                    isLatest ? "latest" : "",
+                    isError ? "error" : "",
+                  ].filter(Boolean).join(" ")}
+                >
+                  <div className="execution-rail" aria-hidden="true">
+                    <span className="execution-node" />
+                    {absoluteIndex < events.length - 1 ? <span className="execution-line" /> : null}
+                  </div>
+                  <div className="execution-step">
+                    <div className="execution-step-header">
+                      <strong>{getEventHeading(event)}</strong>
+                      <time dateTime={toDateTimeAttr(event.timestamp)}>
+                        {formatTime(event.timestamp, { withSeconds: true })}
+                      </time>
+                    </div>
+                    {preview ? <p className="execution-preview">{preview}</p> : null}
+                    {expanded ? <div className="execution-detail">{event.body}</div> : null}
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        )}
+
+        {!showActiveLayout && !expanded && hiddenCount > 0 ? (
           <button
             type="button"
             className="execution-more"

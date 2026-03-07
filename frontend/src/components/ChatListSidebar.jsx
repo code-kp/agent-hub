@@ -1,16 +1,5 @@
 import React from "react";
-
-import { ThemeToggle } from "./ThemeToggle";
-
-function formatTime(value) {
-  if (!value) {
-    return "";
-  }
-  return new Date(value).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+import { formatTime, toDateTimeAttr } from "../lib/time";
 
 function getChatStatus(chat) {
   const assistantMessage = [...chat.messages]
@@ -25,7 +14,9 @@ function getChatStatus(chat) {
     return { label: "Draft", tone: "idle" };
   }
 
-  const hasError = (assistantMessage.thinking || []).some((event) => event.type === "error");
+  const hasError = (assistantMessage.thinking || []).some(
+    (event) => event.state === "error" || event.type === "error",
+  );
   if (assistantMessage.thinkingActive || assistantMessage.streaming) {
     return { label: "Running", tone: "running" };
   }
@@ -40,8 +31,7 @@ export function ChatListSidebar({
   activeChatId,
   onSelectChat,
   onNewChat,
-  onThemeChange,
-  theme,
+  onOpenSettings,
 }) {
   const ordered = [...chats].sort((a, b) => b.updatedAt - a.updatedAt);
 
@@ -75,7 +65,7 @@ export function ChatListSidebar({
                   <strong>{chat.title}</strong>
                   <span className={`chat-status ${status.tone}`}>{status.label}</span>
                 </div>
-                <time className="chat-item-time" dateTime={new Date(chat.updatedAt).toISOString()}>
+                <time className="chat-item-time" dateTime={toDateTimeAttr(chat.updatedAt)}>
                   {formatTime(chat.updatedAt)}
                 </time>
               </button>
@@ -88,10 +78,12 @@ export function ChatListSidebar({
 
       <footer className="sidebar-footer">
         <div className="sidebar-footer-copy">
-          <span className="sidebar-footer-label">Appearance</span>
-          <span className="sidebar-footer-text">Light and dark mode</span>
+          <span className="sidebar-footer-label">Workspace</span>
+          <span className="sidebar-footer-text">Identity, appearance, and knowledge</span>
         </div>
-        <ThemeToggle theme={theme} onThemeChange={onThemeChange} />
+        <button type="button" className="sidebar-action sidebar-settings-button" onClick={onOpenSettings}>
+          Open settings
+        </button>
       </footer>
     </section>
   );

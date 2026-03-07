@@ -8,6 +8,33 @@ export async function fetchAgents() {
   return response.json();
 }
 
+export async function uploadSkillFile({
+  file,
+  namespace = "",
+  tags = "",
+  triggers = "",
+  userId = "browser-user",
+}) {
+  const body = new FormData();
+  body.set("file", file);
+  body.set("user_id", userId);
+  body.set("namespace", namespace);
+  body.set("tags", tags);
+  body.set("triggers", triggers);
+
+  const response = await fetch(`${API_BASE}/api/skills/upload`, {
+    method: "POST",
+    body,
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.detail || `Upload failed with ${response.status}`);
+  }
+
+  return payload;
+}
+
 export async function streamChat({
   agentId,
   message,

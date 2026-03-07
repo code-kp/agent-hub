@@ -6,9 +6,8 @@ export function NavigationRail({
   chats,
   activeChatId,
   onNewChat,
+  onOpenSettings,
   onSelectChat,
-  onThemeChange,
-  theme,
 }) {
   return (
     <aside className="navigation-shell card-shell">
@@ -17,8 +16,7 @@ export function NavigationRail({
         activeChatId={activeChatId}
         onSelectChat={onSelectChat}
         onNewChat={onNewChat}
-        onThemeChange={onThemeChange}
-        theme={theme}
+        onOpenSettings={onOpenSettings}
       />
     </aside>
   );

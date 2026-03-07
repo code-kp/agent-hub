@@ -11,7 +11,11 @@ import {
   normalizeAgentTree,
 } from "../lib/chatWorkspace";
 
-export function useWorkspaceChat() {
+function buildSessionKey(userId, agentId) {
+  return `${userId}::${agentId}`;
+}
+
+export function useWorkspaceChat(userId) {
   const [tree, setTree] = useState([]);
   const [agents, setAgents] = useState([]);
   const [chats, setChats] = useState([]);
@@ -72,7 +76,7 @@ export function useWorkspaceChat() {
     [chats, activeChatId],
   );
   const activeAgentId = activeChat?.agentId || "";
-  const activeSessionId = activeChat?.sessionIds?.[activeAgentId] || "";
+  const activeSessionId = activeChat?.sessionIds?.[buildSessionKey(userId, activeAgentId)] || "";
   const activeAgent = useMemo(
     () => agents.find((item) => item.id === activeAgentId) || null,
     [agents, activeAgentId],
@@ -115,7 +119,7 @@ export function useWorkspaceChat() {
     const event = createThinkingEvent(type, payload);
     updateMessage(chatId, messageId, (current) => ({
       ...current,
-      thinking: [...(current.thinking || []), event],
+      thinking: upsertThinkingEvent(current.thinking || [], event),
     }));
   };
 
@@ -223,19 +227,20 @@ export function useWorkspaceChat() {
         agentId: activeAgentId,
         message: text,
         sessionId: activeSessionId || null,
+        userId,
         onEvent: (type, payload = {}) => {
           if (type === "run_started" && payload.session_id) {
             updateChat(chatId, (chat) => ({
               ...chat,
               sessionIds: {
                 ...(chat.sessionIds || {}),
-                [activeAgentId]: payload.session_id,
+                [buildSessionKey(userId, activeAgentId)]: payload.session_id,
               },
               updatedAt: Date.now(),
             }));
           }
 
-          if (type !== "assistant_delta" && type !== "assistant_message") {
+          if (type === "thinking_step") {
             appendThinkingEvent(chatId, assistantMessage.id, type, payload);
           }
 
@@ -286,7 +291,7 @@ export function useWorkspaceChat() {
           ...chat,
           sessionIds: {
             ...(chat.sessionIds || {}),
-            [activeAgentId]: result.sessionId,
+            [buildSessionKey(userId, activeAgentId)]: result.sessionId,
           },
           updatedAt: Date.now(),
         }));
@@ -299,8 +304,10 @@ export function useWorkspaceChat() {
         streaming: false,
         thinking: [
           ...(current.thinking || []),
-          createThinkingEvent("error", {
-            message: err.message || "Request failed before streaming began.",
+          createThinkingEvent("thinking_step", {
+            label: "Could not complete the answer",
+            detail: err.message || "Request failed before streaming began.",
+            state: "error",
           }),
         ],
         thinkingActive: false,
@@ -334,4 +341,24 @@ export function useWorkspaceChat() {
     searchText,
     setSearchText,
   };
+}
+
+function upsertThinkingEvent(events, nextEvent) {
+  if (!nextEvent.stepId) {
+    return [...events, nextEvent];
+  }
+
+  const index = events.findIndex((event) => event.stepId === nextEvent.stepId);
+  if (index === -1) {
+    return [...events, nextEvent];
+  }
+
+  const updated = [...events];
+  updated[index] = {
+    ...updated[index],
+    ...nextEvent,
+    id: updated[index].id,
+    stepId: updated[index].stepId,
+  };
+  return updated;
 }
