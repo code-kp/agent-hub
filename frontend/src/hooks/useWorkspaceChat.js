@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 
 import { fetchAgents, streamChat } from "../api/client";
 import {
@@ -19,8 +19,16 @@ export function useWorkspaceChat() {
   const [runningChatIds, setRunningChatIds] = useState(() => new Set());
   const [searchText, setSearchText] = useState("");
   const [loading, setLoading] = useState(true);
+  const [agentDirectoryLoading, setAgentDirectoryLoading] = useState(false);
   const [error, setError] = useState("");
   const deferredSearch = useDeferredValue(searchText);
+
+  const applyAgentCatalog = useCallback((data) => {
+    const incomingAgents = data.agents || [];
+    setTree(normalizeAgentTree(data.tree || []));
+    setAgents(incomingAgents);
+    return incomingAgents;
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -35,12 +43,10 @@ export function useWorkspaceChat() {
           return;
         }
 
-        const incomingAgents = data.agents || [];
+        const incomingAgents = applyAgentCatalog(data);
         const defaultAgentId = data.default_agent_id || incomingAgents[0]?.id || "";
         const initialChat = defaultAgentId ? createChat(defaultAgentId, incomingAgents, []) : null;
 
-        setTree(normalizeAgentTree(data.tree || []));
-        setAgents(incomingAgents);
         setChats(initialChat ? [initialChat] : []);
         setActiveChatId(initialChat?.id || "");
       } catch (err) {
@@ -59,7 +65,7 @@ export function useWorkspaceChat() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [applyAgentCatalog]);
 
   const activeChat = useMemo(
     () => chats.find((chat) => chat.id === activeChatId) || null,
@@ -150,6 +156,32 @@ export function useWorkspaceChat() {
     setActiveChatId(nextChat.id);
     setError("");
   };
+
+  const refreshAgentDirectory = useCallback(async () => {
+    setError("");
+    setAgentDirectoryLoading(true);
+
+    try {
+      const data = await fetchAgents();
+      const incomingAgents = applyAgentCatalog(data);
+
+      if (!activeChatId) {
+        const defaultAgentId = data.default_agent_id || incomingAgents[0]?.id || "";
+        if (defaultAgentId) {
+          const nextChat = createChat(defaultAgentId, incomingAgents, []);
+          setChats([nextChat]);
+          setActiveChatId(nextChat.id);
+        }
+      }
+
+      return data;
+    } catch (err) {
+      setError(err.message || "Failed to refresh agents.");
+      throw err;
+    } finally {
+      setAgentDirectoryLoading(false);
+    }
+  }, [activeChatId, applyAgentCatalog]);
 
   const onSend = async (text) => {
     if (!activeChat || !activeAgentId) {
@@ -288,6 +320,7 @@ export function useWorkspaceChat() {
     activeSessionId,
     activeChat,
     agents,
+    agentDirectoryLoading,
     chats,
     error,
     filteredTree,
@@ -297,6 +330,7 @@ export function useWorkspaceChat() {
     onSelectAgent,
     onSelectChat,
     onSend,
+    refreshAgentDirectory,
     searchText,
     setSearchText,
   };

@@ -41,6 +41,7 @@ export function App() {
     activeAgentId,
     activeSessionId,
     activeChat,
+    agentDirectoryLoading,
     chats,
     error,
     filteredTree,
@@ -50,6 +51,7 @@ export function App() {
     onSelectAgent,
     onSelectChat,
     onSend,
+    refreshAgentDirectory,
     searchText,
     setSearchText,
   } = useWorkspaceChat();
@@ -101,13 +103,16 @@ export function App() {
 
   const openAgentPickerForSwitch = React.useCallback(() => {
     setAgentPickerMode("switch");
+    setSearchText("");
     setIsAgentPickerOpen(true);
-  }, []);
+    void refreshAgentDirectory();
+  }, [refreshAgentDirectory, setSearchText]);
   const openAgentPickerForNewChat = React.useCallback(() => {
     setAgentPickerMode("new_chat");
     setSearchText("");
     setIsAgentPickerOpen(true);
-  }, [setSearchText]);
+    void refreshAgentDirectory();
+  }, [refreshAgentDirectory, setSearchText]);
   const closeAgentPicker = React.useCallback(() => {
     setIsAgentPickerOpen(false);
     setSearchText("");
@@ -209,6 +214,7 @@ export function App() {
 
       <AgentPickerDrawer
         isOpen={isAgentPickerOpen}
+        isLoading={agentDirectoryLoading}
         mode={agentPickerMode}
         selectedAgentId={agentPickerMode === "switch" ? activeAgentId : ""}
         tree={filteredTree}

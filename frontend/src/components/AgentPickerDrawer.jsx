@@ -4,6 +4,7 @@ import { AgentTree } from "./AgentTree";
 
 export function AgentPickerDrawer({
   isOpen,
+  isLoading,
   mode,
   selectedAgentId,
   tree,
@@ -79,21 +80,33 @@ export function AgentPickerDrawer({
             type="text"
             placeholder="Filter namespaces or agents"
             value={searchText}
+            disabled={isLoading}
             onChange={(event) => onSearchTextChange(event.target.value)}
           />
         </section>
 
-        {hasQuery ? (
+        {isLoading ? (
+          <div className="agent-drawer-search-note">Refreshing available agents and namespaces...</div>
+        ) : null}
+
+        {!isLoading && hasQuery ? (
           <div className="agent-drawer-search-note">Matching branches stay expanded while filtering.</div>
         ) : null}
 
         <div className="agent-drawer-tree">
-          <AgentTree
-            tree={tree}
-            selectedAgentId={selectedAgentId}
-            searchText={searchText}
-            onSelectAgent={onSelectAgent}
-          />
+          {isLoading ? (
+            <div className="agent-drawer-loading">
+              <span className="agent-drawer-loading-dot" aria-hidden="true" />
+              <span>Loading live agent registry...</span>
+            </div>
+          ) : (
+            <AgentTree
+              tree={tree}
+              selectedAgentId={selectedAgentId}
+              searchText={searchText}
+              onSelectAgent={onSelectAgent}
+            />
+          )}
         </div>
       </aside>
     </div>
