@@ -1,11 +1,92 @@
-const API_BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000";
+export const API_BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000";
 
-export async function fetchAgents() {
-  const response = await fetch(`${API_BASE}/api/agents`);
-  if (!response.ok) {
-    throw new Error(`Failed to load agents: ${response.status}`);
+const AGENTS_TIMEOUT_MS = 6500;
+const HEALTH_TIMEOUT_MS = 2500;
+
+function formatTimeoutMessage(label, timeoutMs) {
+  return `${label} timed out after ${Math.ceil(timeoutMs / 1000)}s.`;
+}
+
+async function fetchWithTimeout(url, { timeoutMs, ...options } = {}) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error(formatTimeoutMessage("Request", timeoutMs));
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
   }
-  return response.json();
+}
+
+async function readResponsePayload(response) {
+  const text = await response.text().catch(() => "");
+  if (!text) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { text };
+  }
+}
+
+export async function fetchAgents({ timeoutMs = AGENTS_TIMEOUT_MS } = {}) {
+  const response = await fetchWithTimeout(`${API_BASE}/api/agents`, { timeoutMs });
+  const payload = await readResponsePayload(response);
+
+  if (!response.ok) {
+    throw new Error(payload.detail || payload.message || payload.text || `Failed to load agents: ${response.status}`);
+  }
+
+  return payload;
+}
+
+export async function fetchHealth({ timeoutMs = HEALTH_TIMEOUT_MS } = {}) {
+  try {
+    const response = await fetchWithTimeout(`${API_BASE}/api/health`, { timeoutMs });
+    const payload = await readResponsePayload(response);
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        status: response.status,
+        message: payload.detail || payload.message || `Health check failed with ${response.status}.`,
+      };
+    }
+
+    return {
+      ok: Boolean(payload.ok),
+      status: response.status,
+      message: payload.ok
+        ? "Agent service is responding."
+        : `Health check reached ${API_BASE}/api/health but did not return ok.`,
+    };
+  } catch (error) {
+    if (error?.name === "AbortError" || /timed out/i.test(error?.message || "")) {
+      return {
+        ok: false,
+        status: 0,
+        message: `Agent service did not respond at ${API_BASE}/api/health.`,
+      };
+    }
+
+    return {
+      ok: false,
+      status: 0,
+      message: error?.message || `Could not reach ${API_BASE}/api/health.`,
+    };
+  }
 }
 
 export async function uploadSkillFile({

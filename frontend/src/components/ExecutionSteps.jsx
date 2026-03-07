@@ -298,7 +298,7 @@ export function ExecutionSteps({ events, active }) {
           </ol>
         )}
 
-        {!showActiveLayout && !expanded && hiddenCount > 0 ? (
+        {!showFocusedLayout && !expanded && hiddenCount > 0 ? (
           <button
             type="button"
             className="execution-more"

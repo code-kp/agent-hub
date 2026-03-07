@@ -1,6 +1,6 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
-import { fetchAgents, streamChat } from "../api/client";
+import { fetchAgents, fetchHealth, streamChat } from "../api/client";
 import {
   buildChatTitle,
   createAssistantMessage,
@@ -24,8 +24,15 @@ export function useWorkspaceChat(userId) {
   const [searchText, setSearchText] = useState("");
   const [loading, setLoading] = useState(true);
   const [agentDirectoryLoading, setAgentDirectoryLoading] = useState(false);
+  const [initialLoadError, setInitialLoadError] = useState("");
+  const [initialLoadRetrying, setInitialLoadRetrying] = useState(false);
+  const [serviceHealth, setServiceHealth] = useState({
+    state: "checking",
+    message: "Checking the agent service.",
+  });
   const [error, setError] = useState("");
   const deferredSearch = useDeferredValue(searchText);
+  const loadRequestRef = useRef(0);
 
   const applyAgentCatalog = useCallback((data) => {
     const incomingAgents = data.agents || [];
@@ -34,42 +41,86 @@ export function useWorkspaceChat(userId) {
     return incomingAgents;
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
+  const loadWorkspace = useCallback(async ({ retry = false } = {}) => {
+    const requestId = loadRequestRef.current + 1;
+    loadRequestRef.current = requestId;
 
-    async function loadWorkspace() {
-      setLoading(true);
-      setError("");
+    setLoading(true);
+    setError("");
+    setInitialLoadRetrying(retry);
 
-      try {
-        const data = await fetchAgents();
-        if (cancelled) {
-          return;
-        }
-
-        const incomingAgents = applyAgentCatalog(data);
-        const defaultAgentId = data.default_agent_id || incomingAgents[0]?.id || "";
-        const initialChat = defaultAgentId ? createChat(defaultAgentId, incomingAgents, []) : null;
-
-        setChats(initialChat ? [initialChat] : []);
-        setActiveChatId(initialChat?.id || "");
-      } catch (err) {
-        if (!cancelled) {
-          setError(err.message || "Failed to load agents.");
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
+    if (!retry) {
+      setInitialLoadError("");
+      setServiceHealth({
+        state: "checking",
+        message: "Checking whether the agent service is reachable.",
+      });
+    } else {
+      setServiceHealth((current) => ({
+        state: current.state === "up" ? "checking" : "down",
+        message: "Retrying connection to the agent service.",
+      }));
     }
 
-    loadWorkspace();
+    const healthPromise = fetchHealth().then((result) => {
+      if (loadRequestRef.current !== requestId) {
+        return result;
+      }
+
+      setServiceHealth({
+        state: result.ok ? "up" : "down",
+        message: result.ok
+          ? "Agent service is responding."
+          : result.message || "The agent service may be down or unresponsive.",
+      });
+
+      return result;
+    });
+
+    try {
+      const data = await fetchAgents();
+      if (loadRequestRef.current !== requestId) {
+        return;
+      }
+
+      const incomingAgents = applyAgentCatalog(data);
+      const defaultAgentId = data.default_agent_id || incomingAgents[0]?.id || "";
+      const initialChat = defaultAgentId ? createChat(defaultAgentId, incomingAgents, []) : null;
+
+      setChats(initialChat ? [initialChat] : []);
+      setActiveChatId(initialChat?.id || "");
+      setInitialLoadError("");
+      setInitialLoadRetrying(false);
+    } catch (err) {
+      const health = await healthPromise;
+      if (loadRequestRef.current !== requestId) {
+        return;
+      }
+
+      const message = err.message || "Failed to load agents.";
+      setInitialLoadError(message);
+      setInitialLoadRetrying(false);
+      setServiceHealth({
+        state: health?.ok ? "up" : "down",
+        message: health?.ok
+          ? "Agent service is reachable, but loading the live agent registry did not complete."
+          : health?.message || "The agent service may be down or unresponsive.",
+      });
+    } finally {
+      if (loadRequestRef.current === requestId) {
+        setInitialLoadRetrying(false);
+        setLoading(false);
+      }
+    }
+  }, [applyAgentCatalog]);
+
+  useEffect(() => {
+    void loadWorkspace();
 
     return () => {
-      cancelled = true;
+      loadRequestRef.current += 1;
     };
-  }, [applyAgentCatalog]);
+  }, [loadWorkspace]);
 
   const activeChat = useMemo(
     () => chats.find((chat) => chat.id === activeChatId) || null,
@@ -180,8 +231,12 @@ export function useWorkspaceChat(userId) {
 
       return data;
     } catch (err) {
-      setError(err.message || "Failed to refresh agents.");
-      throw err;
+      const health = await fetchHealth();
+      const message = health.ok
+        ? (err.message || "Failed to refresh agents.")
+        : `${err.message || "Failed to refresh agents."} Agent service may be down.`;
+      setError(message);
+      throw new Error(message);
     } finally {
       setAgentDirectoryLoading(false);
     }
@@ -331,6 +386,8 @@ export function useWorkspaceChat(userId) {
     chats,
     error,
     filteredTree,
+    initialLoadError,
+    initialLoadRetrying,
     isSending,
     loading,
     onNewChat,
@@ -338,7 +395,9 @@ export function useWorkspaceChat(userId) {
     onSelectChat,
     onSend,
     refreshAgentDirectory,
+    retryInitialLoad: loadWorkspace,
     searchText,
+    serviceHealth,
     setSearchText,
   };
 }

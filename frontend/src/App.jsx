@@ -54,6 +54,8 @@ export function App() {
     chats,
     error,
     filteredTree,
+    initialLoadError,
+    initialLoadRetrying,
     isSending,
     loading,
     onNewChat,
@@ -61,6 +63,8 @@ export function App() {
     onSelectChat,
     onSend,
     refreshAgentDirectory,
+    retryInitialLoad,
+    serviceHealth,
     searchText,
     setSearchText,
   } = useWorkspaceChat(userId);
@@ -201,8 +205,19 @@ export function App() {
     }
   }, []);
 
-  if (loading) {
-    return <LoadingScreen />;
+  if (loading || initialLoadError) {
+    return (
+      <LoadingScreen
+        isLoading={loading}
+        error={initialLoadError}
+        isRetrying={initialLoadRetrying}
+        healthState={serviceHealth.state}
+        healthMessage={serviceHealth.message}
+        onRetry={() => {
+          void retryInitialLoad({ retry: true });
+        }}
+      />
+    );
   }
 
   return (

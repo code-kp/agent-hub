@@ -202,6 +202,87 @@ time {
   line-height: 1.6;
 }
 
+.loading-inline-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.loading-inline-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.loading-inline-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--danger);
+  box-shadow: 0 0 0 4px rgba(180, 35, 24, 0.08);
+}
+
+.loading-inline-status.neutral .loading-inline-dot,
+.loading-inline-dot.loading {
+  background: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-glow-soft);
+  animation: pulse 1.1s ease-in-out infinite;
+}
+
+.loading-retry-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--text-muted);
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.loading-retry-button:hover {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.loading-retry-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 4px var(--accent-focus-shadow);
+}
+
+.loading-retry-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.loading-retry-button.retrying {
+  cursor: default;
+  color: var(--accent);
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+
+.loading-retry-button.retrying svg {
+  animation: rotate-refresh 0.9s linear infinite;
+}
+
+.loading-retry-button:disabled {
+  opacity: 1;
+}
+
 .navigation-shell {
   min-height: calc(100vh - 24px);
   max-height: calc(100vh - 24px);
@@ -2071,6 +2152,15 @@ time {
   }
 }
 
+@keyframes rotate-refresh {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (max-width: 1100px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -2132,7 +2222,8 @@ time {
   .agent-drawer-header,
   .namespace-node summary,
   .execution-current-topline,
-  .execution-history-header {
+  .execution-history-header,
+  .loading-inline-status {
     flex-direction: column;
     align-items: flex-start;
   }
@@ -2207,6 +2298,10 @@ time {
 
   .settings-card .theme-toggle {
     width: 100%;
+  }
+
+  .loading-retry-button {
+    align-self: flex-start;
   }
 
   .knowledge-upload-grid {
