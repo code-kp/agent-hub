@@ -5,26 +5,25 @@ Tests:
 
 from __future__ import annotations
 
-from collections import Counter
 from dataclasses import dataclass
 from typing import Dict, List, Sequence
 
-from core.contracts.skills import SkillDefinition, ensure_skill_ids, ensure_skill_scopes
+from core.contracts.skills import SkillDefinition, ensure_skill_ids
 from core.skills.store import SkillChunk, SkillStore
 from core.skills.uploads import build_user_upload_scope
 
 
 @dataclass(frozen=True)
 class ResolvedSkillContext:
-    always_on_skills: tuple[SkillDefinition, ...] = ()
-    selected_skills: tuple[SkillDefinition, ...] = ()
+    behavior: tuple[SkillDefinition, ...] = ()
+    knowledge: tuple[SkillDefinition, ...] = ()
     chunks: tuple[SkillChunk, ...] = ()
 
     @property
     def all_skills(self) -> tuple[SkillDefinition, ...]:
         ordered: List[SkillDefinition] = []
         seen = set()
-        for skill in [*self.always_on_skills, *self.selected_skills]:
+        for skill in [*self.behavior, *self.knowledge]:
             if skill.id in seen:
                 continue
             seen.add(skill.id)
@@ -33,7 +32,7 @@ class ResolvedSkillContext:
 
     @property
     def is_empty(self) -> bool:
-        return not self.always_on_skills and not self.selected_skills and not self.chunks
+        return not self.behavior and not self.knowledge and not self.chunks
 
 
 class SkillResolver:
@@ -45,108 +44,34 @@ class SkillResolver:
         *,
         query: str,
         user_id: str,
-        behavior_skill_ids: Sequence[str] = (),
-        knowledge_skill_ids: Sequence[str] = (),
-        skill_scopes: Sequence[str] = (),
-        always_on_skill_ids: Sequence[str] = (),
+        behavior_ids: Sequence[str] = (),
+        knowledge_ids: Sequence[str] = (),
         max_auto_skills: int = 3,
         max_chunks: int = 4,
         max_chunk_chars: int = 1600,
     ) -> ResolvedSkillContext:
         self.store.refresh()
-        explicit_behavior_ids = set(ensure_skill_ids(behavior_skill_ids))
-        explicit_knowledge_ids = set(ensure_skill_ids(knowledge_skill_ids))
-        if explicit_behavior_ids or explicit_knowledge_ids:
-            return self._resolve_explicit(
-                query=query,
-                user_id=user_id,
-                behavior_skill_ids=explicit_behavior_ids,
-                knowledge_skill_ids=explicit_knowledge_ids,
-                max_auto_skills=max_auto_skills,
-                max_chunks=max_chunks,
-                max_chunk_chars=max_chunk_chars,
-            )
+        behavior_skill_ids = set(ensure_skill_ids(behavior_ids))
+        knowledge_skill_ids = set(ensure_skill_ids(knowledge_ids))
 
-        scopes = ensure_skill_scopes(skill_scopes)
-        shared_scopes = ensure_skill_scopes((build_user_upload_scope(user_id),))
-        explicit_always_on = set(ensure_skill_ids(always_on_skill_ids))
-        allowed_skills = [
-            skill
-            for skill in self.store.list_skills()
-            if (
-                not scopes
-                or any(skill.matches_scope(scope) for scope in scopes)
-                or any(skill.matches_scope(scope) for scope in shared_scopes)
-            )
-        ]
-        if not allowed_skills:
-            return ResolvedSkillContext()
-
-        always_on = [
-            skill
-            for skill in allowed_skills
-            if skill.mode == "always_on" or skill.id in explicit_always_on
-        ]
-        always_on_ids = {skill.id for skill in always_on}
-
-        scored_candidates: List[tuple[float, SkillDefinition]] = []
-        for skill in allowed_skills:
-            if skill.id in always_on_ids or skill.mode == "manual":
-                continue
-            score = self._score_skill(skill, query)
-            if score <= 0:
-                continue
-            scored_candidates.append((score, skill))
-
-        scored_candidates.sort(
-            key=lambda item: (-item[0], -item[1].priority, item[1].id)
-        )
-        selected_skills = [skill for _, skill in scored_candidates[:max_auto_skills]]
-        selected_ids = {skill.id for skill in selected_skills}
-
-        chunk_skill_ids = list(always_on_ids | selected_ids)
-        chunks = self.store.select_relevant_chunks(
-            query=query,
-            max_chunks=max_chunks,
-            max_chars=max_chunk_chars,
-            skill_ids=chunk_skill_ids,
-        )
-
-        return ResolvedSkillContext(
-            always_on_skills=tuple(always_on),
-            selected_skills=tuple(selected_skills),
-            chunks=tuple(chunks),
-        )
-
-    def _resolve_explicit(
-        self,
-        *,
-        query: str,
-        user_id: str,
-        behavior_skill_ids: set[str],
-        knowledge_skill_ids: set[str],
-        max_auto_skills: int,
-        max_chunks: int,
-        max_chunk_chars: int,
-    ) -> ResolvedSkillContext:
-        always_on = self._resolve_explicit_skills(behavior_skill_ids, expected_class="behavior")
+        behavior_skills = self._resolve_explicit_skills(behavior_skill_ids, expected_class="behavior")
         knowledge_candidates = self._resolve_explicit_skills(knowledge_skill_ids, expected_class="knowledge")
         knowledge_candidates.extend(self._resolve_user_upload_knowledge(user_id))
 
-        always_on_ids = {skill.id for skill in always_on}
+        behavior_skill_set = {skill.id for skill in behavior_skills}
         scored_candidates: List[tuple[float, SkillDefinition]] = []
         for skill in knowledge_candidates:
-            if skill.id in always_on_ids:
+            if skill.id in behavior_skill_set:
                 continue
             score = self._score_skill(skill, query)
             if score <= 0:
                 continue
             scored_candidates.append((score, skill))
 
-        scored_candidates.sort(key=lambda item: (-item[0], -item[1].priority, item[1].id))
+        scored_candidates.sort(key=lambda item: (-item[0], item[1].id))
         selected_skills = [skill for _, skill in scored_candidates[:max_auto_skills]]
         selected_ids = {skill.id for skill in selected_skills}
-        chunk_skill_ids = list(always_on_ids | selected_ids)
+        chunk_skill_ids = list(behavior_skill_set | selected_ids)
         chunks = self.store.select_relevant_chunks(
             query=query,
             max_chunks=max_chunks,
@@ -154,8 +79,8 @@ class SkillResolver:
             skill_ids=chunk_skill_ids,
         )
         return ResolvedSkillContext(
-            always_on_skills=tuple(always_on),
-            selected_skills=tuple(selected_skills),
+            behavior=tuple(behavior_skills),
+            knowledge=tuple(selected_skills),
             chunks=tuple(chunks),
         )
 
@@ -183,7 +108,7 @@ class SkillResolver:
         for skill in self.store.list_skills():
             if skill.skill_class != "knowledge":
                 continue
-            if skill.matches_scope(upload_scope):
+            if skill.id == upload_scope or skill.id.startswith(upload_scope + "."):
                 resolved.append(skill)
         return resolved
 
@@ -193,36 +118,27 @@ class SkillResolver:
             return 0.0
 
         metadata_tokens = self.store._tokenize(
-            "{title} {summary} {tags} {triggers} {body}".format(
+            "{title} {summary} {body}".format(
                 title=skill.title,
                 summary=skill.summary,
-                tags=" ".join(skill.tags),
-                triggers=" ".join(skill.triggers),
                 body=skill.body[:800],
             )
         )
         if not metadata_tokens:
             return 0.0
 
-        query_counter = Counter(query_tokens)
-        metadata_counter = Counter(metadata_tokens)
         overlap = 0.0
-        for token, query_count in query_counter.items():
-            overlap += min(query_count, metadata_counter.get(token, 0))
+        metadata_token_set = set(metadata_tokens)
+        for token in query_tokens:
+            if token in metadata_token_set:
+                overlap += 1.0
 
         query_text = query.lower()
-        trigger_bonus = 0.0
-        for trigger in skill.triggers:
-            lowered = trigger.lower()
-            if lowered and lowered in query_text:
-                trigger_bonus += 3.0
-
         title_bonus = 1.5 if any(token in skill.title.lower() for token in query_tokens) else 0.0
-        tag_bonus = 1.0 if any(token in " ".join(skill.tags).lower() for token in query_tokens) else 0.0
         summary_bonus = 1.0 if query_text and query_text in skill.summary.lower() else 0.0
-        priority_bonus = max(skill.priority, 0) / 100.0
+        phrase_bonus = 1.0 if query_text and query_text in skill.body.lower() else 0.0
 
-        return overlap + trigger_bonus + title_bonus + tag_bonus + summary_bonus + priority_bonus
+        return overlap + title_bonus + summary_bonus + phrase_bonus
 
 
 def describe_resolved_skill_context(context: ResolvedSkillContext) -> str:
@@ -230,19 +146,19 @@ def describe_resolved_skill_context(context: ResolvedSkillContext) -> str:
         return "No shared skills were selected for this request."
 
     parts: List[str] = []
-    if context.always_on_skills:
-        labels = ", ".join(skill.id for skill in context.always_on_skills)
+    if context.behavior:
+        labels = ", ".join(skill.id for skill in context.behavior)
         parts.append(
-            "Loaded {count} always-on skill(s): {labels}.".format(
-                count=len(context.always_on_skills),
+            "Loaded {count} behavior skill(s): {labels}.".format(
+                count=len(context.behavior),
                 labels=labels,
             )
         )
-    if context.selected_skills:
-        labels = ", ".join(skill.id for skill in context.selected_skills)
+    if context.knowledge:
+        labels = ", ".join(skill.id for skill in context.knowledge)
         parts.append(
-            "Matched {count} request-specific skill(s): {labels}.".format(
-                count=len(context.selected_skills),
+            "Matched {count} knowledge skill(s): {labels}.".format(
+                count=len(context.knowledge),
                 labels=labels,
             )
         )
@@ -257,17 +173,15 @@ def describe_resolved_skill_context(context: ResolvedSkillContext) -> str:
 
 def serialize_resolved_skills(context: ResolvedSkillContext) -> List[Dict[str, str]]:
     items = []
-    always_on_ids = {skill.id for skill in context.always_on_skills}
+    behavior_ids = {skill.id for skill in context.behavior}
     for skill in context.all_skills:
         items.append(
             {
                 "id": skill.id,
                 "title": skill.title,
                 "class": skill.skill_class,
-                "type": skill.skill_type,
-                "mode": skill.mode,
                 "summary": skill.summary,
-                "role": "always_on" if skill.id in always_on_ids else "selected",
+                "role": "behavior" if skill.id in behavior_ids else "selected",
                 "source": skill.source,
             }
         )

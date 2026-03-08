@@ -27,11 +27,8 @@ class Agent:
     description: str
     system_prompt: str
     tools: Sequence[contracts_tools.ToolLike]
-    behavior_skills: Sequence[str] = ()
-    knowledge_skills: Sequence[str] = ()
-    skill_scopes: Sequence[str] = ()
-    always_on_skills: Sequence[str] = ()
-    skills_dir: Optional[str] = None
+    behavior: Sequence[str] = ()
+    knowledge: Sequence[str] = ()
     model: Optional[str] = None
     runtime_mode: str = "direct"
     execution: contracts_execution.ExecutionConfig = field(
@@ -43,14 +40,6 @@ class Agent:
     hooks: contracts_hooks.AgentHooks = field(
         default_factory=lambda: contracts_hooks.DEFAULT_AGENT_HOOKS
     )
-
-    @property
-    def behavior(self) -> Sequence[str]:
-        return self.behavior_skills
-
-    @property
-    def knowledge(self) -> Sequence[str]:
-        return self.knowledge_skills
 
 
 class AgentModule:
@@ -72,13 +61,8 @@ class AgentModule:
     tools: Sequence[contracts_tools.ToolLike] = ()
     behavior: Sequence[str] = ()
     knowledge: Sequence[str] = ()
-    behavior_skills: Sequence[str] = ()
-    knowledge_skills: Sequence[str] = ()
-    skill_scopes: Sequence[str] = ()
-    always_on_skills: Sequence[str] = ()
     include_core_tools: bool = True
     core_toolsets: Sequence[str] = ()
-    skills_dir: Optional[str] = None
     model: Optional[str] = None
     runtime_mode: str = "direct"
     execution: contracts_execution.ExecutionConfig = contracts_execution.DEFAULT_EXECUTION_CONFIG
@@ -100,13 +84,8 @@ def define_agent(
     tools: Optional[Sequence[contracts_tools.ToolLike]] = None,
     behavior: Optional[Sequence[str]] = None,
     knowledge: Optional[Sequence[str]] = None,
-    behavior_skills: Optional[Sequence[str]] = None,
-    knowledge_skills: Optional[Sequence[str]] = None,
-    skill_scopes: Optional[Sequence[str]] = None,
-    always_on_skills: Optional[Sequence[str]] = None,
     include_core_tools: bool = True,
     core_toolsets: Optional[Sequence[str]] = None,
-    skills_dir: Optional[str] = None,
     model: Optional[str] = None,
     runtime_mode: str = "direct",
     execution: Optional[contracts_execution.ExecutionConfig] = None,
@@ -121,9 +100,6 @@ def define_agent(
                 allowed=", ".join(VALID_RUNTIME_MODES),
             )
         )
-    normalized_scopes = _resolve_skill_scopes(skill_scopes=skill_scopes, skills_dir=skills_dir)
-    resolved_behavior = behavior if behavior is not None else behavior_skills
-    resolved_knowledge = knowledge if knowledge is not None else knowledge_skills
     return Agent(
         name=name,
         description=description,
@@ -133,11 +109,8 @@ def define_agent(
             include_core_tools=include_core_tools,
             core_toolsets=core_toolsets,
         ),
-        behavior_skills=contracts_skills.ensure_skill_ids(resolved_behavior),
-        knowledge_skills=contracts_skills.ensure_skill_ids(resolved_knowledge),
-        skill_scopes=normalized_scopes,
-        always_on_skills=contracts_skills.ensure_skill_ids(always_on_skills),
-        skills_dir=skills_dir,
+        behavior=contracts_skills.ensure_skill_ids(behavior),
+        knowledge=contracts_skills.ensure_skill_ids(knowledge),
         model=model,
         runtime_mode=normalized_runtime_mode,
         execution=contracts_execution.ensure_execution_config(execution),
@@ -163,13 +136,10 @@ def agent_from_class(agent_cls: Type[AgentModule]) -> Agent:
         description=getattr(agent_cls, "description", "") or agent_cls.name,
         system_prompt=agent_cls.system_prompt,
         tools=getattr(agent_cls, "tools", ()),
-        behavior=_resolve_class_skill_alias(agent_cls, "behavior", "behavior_skills"),
-        knowledge=_resolve_class_skill_alias(agent_cls, "knowledge", "knowledge_skills"),
-        skill_scopes=getattr(agent_cls, "skill_scopes", ()),
-        always_on_skills=getattr(agent_cls, "always_on_skills", ()),
+        behavior=getattr(agent_cls, "behavior", ()),
+        knowledge=getattr(agent_cls, "knowledge", ()),
         include_core_tools=getattr(agent_cls, "include_core_tools", True),
         core_toolsets=getattr(agent_cls, "core_toolsets", ()),
-        skills_dir=getattr(agent_cls, "skills_dir", None),
         model=getattr(agent_cls, "model", None),
         runtime_mode=getattr(agent_cls, "runtime_mode", "direct"),
         execution=getattr(agent_cls, "execution", contracts_execution.DEFAULT_EXECUTION_CONFIG),
@@ -189,32 +159,3 @@ def register_orchestrated_agent_class(
     agent_cls: Type[OrchestratedAgentModule],
 ) -> Type[OrchestratedAgentModule]:
     return register_agent_class(agent_cls)
-
-
-def _resolve_skill_scopes(
-    *,
-    skill_scopes: Optional[Sequence[str]],
-    skills_dir: Optional[str],
-) -> tuple[str, ...]:
-    normalized_scopes = list(contracts_skills.ensure_skill_scopes(skill_scopes))
-    if not skills_dir:
-        return tuple(normalized_scopes)
-
-    compatibility_scope = str(skills_dir).strip().replace("/", ".")
-    if not compatibility_scope:
-        return tuple(normalized_scopes)
-
-    for candidate in (compatibility_scope, "{scope}.*".format(scope=compatibility_scope)):
-        if candidate not in normalized_scopes:
-            normalized_scopes.append(candidate)
-    return tuple(normalized_scopes)
-
-
-def _resolve_class_skill_alias(
-    agent_cls: Type[AgentModule],
-    preferred_attr: str,
-    legacy_attr: str,
-) -> Sequence[str]:
-    if preferred_attr in agent_cls.__dict__:
-        return getattr(agent_cls, preferred_attr)
-    return getattr(agent_cls, legacy_attr, ())

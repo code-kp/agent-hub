@@ -95,7 +95,6 @@ class AgentPlatform:
                     "id": item.skill_id,
                     "source": item.source,
                     "class": item.definition.skill_class,
-                    "type": item.definition.skill_type,
                     "title": item.definition.title,
                     "summary": item.definition.summary,
                 }
@@ -199,13 +198,6 @@ class AgentPlatform:
         content: str,
         uploader_id: str,
         namespace: str = "",
-        title: Optional[str] = None,
-        summary: Optional[str] = None,
-        skill_type: str = "knowledge",
-        mode: str = "auto",
-        tags: Sequence[str] = (),
-        triggers: Sequence[str] = (),
-        priority: int = 60,
     ) -> Dict[str, Any]:
         definition = create_uploaded_skill(
             skills_root=self.workspace_root / "skills",
@@ -213,13 +205,6 @@ class AgentPlatform:
             content=content,
             uploader_id=uploader_id,
             namespace=namespace,
-            title=title,
-            summary=summary,
-            skill_type=skill_type,
-            mode=mode,
-            tags=tags,
-            triggers=triggers,
-            priority=priority,
         )
         self.refresh_skills()
         return self._serialize_skill(definition)
@@ -231,10 +216,5 @@ class AgentPlatform:
             "path": str(definition.path),
             "title": definition.title,
             "class": definition.skill_class,
-            "type": definition.skill_type,
-            "mode": definition.mode,
             "summary": definition.summary,
-            "tags": list(definition.tags),
-            "triggers": list(definition.triggers),
-            "priority": definition.priority,
         }

@@ -79,26 +79,12 @@ class AgentApi:
         content: str,
         uploader_id: str = "api-user",
         namespace: str = "",
-        title: Optional[str] = None,
-        summary: Optional[str] = None,
-        skill_type: str = "knowledge",
-        mode: str = "auto",
-        tags: Optional[Iterable[str]] = None,
-        triggers: Optional[Iterable[str]] = None,
-        priority: int = 60,
-        ) -> Dict[str, Any]:
+    ) -> Dict[str, Any]:
         return self.platform.upload_skill_markdown(
             file_name=file_name,
             content=content,
             uploader_id=uploader_id,
             namespace=namespace,
-            title=title,
-            summary=summary,
-            skill_type=skill_type,
-            mode=mode,
-            tags=list(tags or ()),
-            triggers=list(triggers or ()),
-            priority=priority,
         )
 
     async def stream_chat_events(

@@ -110,9 +110,9 @@ def format_skill_context(context: ResolvedSkillContext) -> str:
         "Skill context:",
         "Use these summaries and excerpts only when they materially help answer the user.",
     ]
-    if context.always_on_skills:
-        lines.append("Always-on skills:")
-        for skill in context.always_on_skills:
+    if context.behavior:
+        lines.append("Behavior skills:")
+        for skill in context.behavior:
             lines.append(
                 "- [{skill_id}] ({skill_class}) {title}: {summary}".format(
                     skill_id=skill.id,
@@ -121,9 +121,9 @@ def format_skill_context(context: ResolvedSkillContext) -> str:
                     summary=skill.summary,
                 )
             )
-    if context.selected_skills:
-        lines.append("Retrieved skills:")
-        for skill in context.selected_skills:
+    if context.knowledge:
+        lines.append("Retrieved knowledge skills:")
+        for skill in context.knowledge:
             lines.append(
                 "- [{skill_id}] ({skill_class}) {title}: {summary}".format(
                     skill_id=skill.id,
@@ -268,17 +268,17 @@ def skill_context_thinking(context: ResolvedSkillContext) -> tuple[str, str, str
             "done",
         )
 
-    if context.selected_skills:
+    if context.knowledge:
         return (
             "Checking relevant guidance",
             "Pulled in only the small set of guidance that looks useful for this question.",
             "done",
         )
 
-    if context.always_on_skills:
+    if context.behavior:
         return (
-            "Applying baseline guidance",
-            "Using the always-on instructions that shape how this agent responds.",
+            "Applying behavior guidance",
+            "Using the behavior guidance that shapes how this agent responds.",
             "done",
         )
 

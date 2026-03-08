@@ -106,41 +106,10 @@ class AgentContractsTest(unittest.TestCase):
             knowledge=("support/triage", "general.product"),
         )
 
-        self.assertEqual(agent.behavior_skills, ("support.persona",))
-        self.assertEqual(agent.knowledge_skills, ("support.triage", "general.product"))
         self.assertEqual(agent.behavior, ("support.persona",))
         self.assertEqual(agent.knowledge, ("support.triage", "general.product"))
 
-    def test_new_behavior_alias_wins_over_legacy_fields(self) -> None:
-        agent = define_agent(
-            name="Alias Agent",
-            description="Prefers the shorter alias surface.",
-            system_prompt="Answer clearly.",
-            tools=("explicit_ping",),
-            behavior=("support.persona",),
-            knowledge=("support.triage",),
-            behavior_skills=("general.persona",),
-            knowledge_skills=("general.product",),
-        )
-
-        self.assertEqual(agent.behavior_skills, ("support.persona",))
-        self.assertEqual(agent.knowledge_skills, ("support.triage",))
-
-    def test_legacy_skill_fields_still_normalize_for_compatibility(self) -> None:
-        agent = define_agent(
-            name="Legacy Skill Agent",
-            description="Uses compatibility fields.",
-            system_prompt="Answer clearly.",
-            tools=("explicit_ping",),
-            skill_scopes=("support",),
-            always_on_skills=("support/persona",),
-            skills_dir="general",
-        )
-
-        self.assertEqual(agent.skill_scopes, ("support", "general", "general.*"))
-        self.assertEqual(agent.always_on_skills, ("support.persona",))
-
-    def test_class_surface_supports_behavior_and_knowledge_aliases(self) -> None:
+    def test_class_surface_supports_behavior_and_knowledge(self) -> None:
         class AliasAgent(OrchestratedAgentModule):
             name = "Alias Example"
             description = "Uses shorter skill aliases."

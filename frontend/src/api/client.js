@@ -92,16 +92,12 @@ export async function fetchHealth({ timeoutMs = HEALTH_TIMEOUT_MS } = {}) {
 export async function uploadSkillFile({
   file,
   namespace = "",
-  tags = "",
-  triggers = "",
   userId = "browser-user",
 }) {
   const body = new FormData();
   body.set("file", file);
   body.set("user_id", userId);
   body.set("namespace", namespace);
-  body.set("tags", tags);
-  body.set("triggers", triggers);
 
   const response = await fetch(`${API_BASE}/api/skills/upload`, {
     method: "POST",

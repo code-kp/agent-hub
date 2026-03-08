@@ -674,8 +674,6 @@ class DirectAgentRuntime:
         return self.skill_resolver.resolve(
             query=query,
             user_id=user_id,
-            behavior_skill_ids=self.definition.behavior_skills,
-            knowledge_skill_ids=self.definition.knowledge_skills,
-            skill_scopes=self.definition.skill_scopes,
-            always_on_skill_ids=self.definition.always_on_skills,
+            behavior_ids=self.definition.behavior,
+            knowledge_ids=self.definition.knowledge,
         )

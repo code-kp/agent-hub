@@ -98,8 +98,6 @@ class SkillStore:
                 "id": skill.id,
                 "title": skill.title,
                 "class": skill.skill_class,
-                "type": skill.skill_type,
-                "mode": skill.mode,
                 "summary": skill.summary,
                 "source": skill.source,
             }

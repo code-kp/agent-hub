@@ -36,59 +36,14 @@ General product details.
             context = resolver.resolve(
                 query="We have a production incident and need troubleshooting guidance.",
                 user_id="support-user",
-                behavior_skill_ids=("support.persona",),
-                knowledge_skill_ids=("support.triage",),
-                skill_scopes=(),
+                behavior_ids=("support.persona",),
+                knowledge_ids=("support.triage",),
             )
 
-            self.assertEqual([skill.id for skill in context.always_on_skills], ["support.persona"])
-            self.assertEqual([skill.id for skill in context.selected_skills], ["support.triage"])
+            self.assertEqual([skill.id for skill in context.behavior], ["support.persona"])
+            self.assertEqual([skill.id for skill in context.knowledge], ["support.triage"])
             self.assertTrue(context.chunks)
             self.assertTrue(all(chunk.skill_id in {"support.persona", "support.triage"} for chunk in context.chunks))
-
-    def test_resolver_keeps_legacy_scopes_during_migration(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            skills_root = Path(tmp)
-            self._write(
-                skills_root / "support" / "persona.md",
-                """---
-title: Support Persona
-type: persona
-summary: Keep support replies concrete and operational.
-mode: always_on
----
-
-# Support Persona
-
-Be concrete and operational.
-""",
-            )
-            self._write(
-                skills_root / "support" / "triage.md",
-                """---
-title: Support Triage
-type: workflow
-summary: Troubleshoot incidents and escalation paths.
-triggers: [incident, production, troubleshoot]
-mode: auto
----
-
-# Support Triage
-
-If production is affected, provide mitigation first.
-""",
-            )
-
-            resolver = SkillResolver(SkillStore(skills_root))
-            context = resolver.resolve(
-                query="We have a production incident and need troubleshooting guidance.",
-                user_id="support-user",
-                skill_scopes=("support",),
-                always_on_skill_ids=(),
-            )
-
-            self.assertEqual([skill.id for skill in context.always_on_skills], ["support.persona"])
-            self.assertEqual([skill.id for skill in context.selected_skills], ["support.triage"])
 
     def test_resolver_limits_uploaded_skills_to_matching_user_id(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -102,17 +57,7 @@ Be concrete and operational.
             )
             self._write(
                 skills_root / "uploads" / "browser-user" / "refund-policy.md",
-                """---
-title: Refund Policy Upload
-type: knowledge
-summary: User-uploaded refund rules and timelines.
-tags: [uploaded, refund]
-triggers: [refund, reimbursement]
-mode: auto
-priority: 70
----
-
-# Refund Policy
+                """# Refund Policy
 
 Refunds are available within 30 days for annual plans.
 """,
@@ -122,28 +67,26 @@ Refunds are available within 30 days for annual plans.
             matching_context = resolver.resolve(
                 query="What is the refund timeline for annual plans?",
                 user_id="browser-user",
-                behavior_skill_ids=("support.persona",),
-                knowledge_skill_ids=(),
-                skill_scopes=(),
+                behavior_ids=("support.persona",),
+                knowledge_ids=(),
             )
             other_user_context = resolver.resolve(
                 query="What is the refund timeline for annual plans?",
                 user_id="another-user",
-                behavior_skill_ids=("support.persona",),
-                knowledge_skill_ids=(),
-                skill_scopes=(),
+                behavior_ids=("support.persona",),
+                knowledge_ids=(),
             )
 
-            self.assertEqual([skill.id for skill in matching_context.always_on_skills], ["support.persona"])
+            self.assertEqual([skill.id for skill in matching_context.behavior], ["support.persona"])
             self.assertEqual(
-                [skill.id for skill in matching_context.selected_skills],
+                [skill.id for skill in matching_context.knowledge],
                 ["uploads.browser-user.refund-policy"],
             )
             self.assertTrue(
                 any(chunk.skill_id == "uploads.browser-user.refund-policy" for chunk in matching_context.chunks)
             )
-            self.assertEqual([skill.id for skill in other_user_context.always_on_skills], ["support.persona"])
-            self.assertEqual(other_user_context.selected_skills, ())
+            self.assertEqual([skill.id for skill in other_user_context.behavior], ["support.persona"])
+            self.assertEqual(other_user_context.knowledge, ())
             self.assertTrue(all(chunk.skill_id == "support.persona" for chunk in other_user_context.chunks))
 
     def _write(self, path: Path, content: str) -> None:

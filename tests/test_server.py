@@ -74,12 +74,8 @@ class ServerUploadTest(unittest.TestCase):
                 "source": "uploads/browser-user/billing/refund-faq.md",
                 "path": "/tmp/uploads/browser-user/billing/refund-faq.md",
                 "title": "Refund FAQ",
-                "type": "knowledge",
-                "mode": "auto",
+                "class": "knowledge",
                 "summary": "Refund policy details.",
-                "tags": ["uploaded", "browser-user", "billing"],
-                "triggers": ["refund"],
-                "priority": 60,
             }
 
             response = client.post(
@@ -87,8 +83,6 @@ class ServerUploadTest(unittest.TestCase):
                 data={
                     "user_id": "browser-user",
                     "namespace": "billing",
-                    "tags": "billing,refund",
-                    "triggers": "refund",
                 },
                 files={
                     "file": (
@@ -102,8 +96,8 @@ class ServerUploadTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["skill"]["id"], "uploads.browser-user.billing.refund-faq")
-        self.assertEqual(payload["skill"]["type"], "knowledge")
-        self.assertIn("recommended_type", payload["usage"])
+        self.assertEqual(payload["skill"]["class"], "knowledge")
+        self.assertIn("note", payload["usage"])
 
     def test_upload_skill_endpoint_rejects_non_markdown_files(self) -> None:
         client = TestClient(server.app)

@@ -220,7 +220,6 @@ class DirectRuntimeTest(unittest.IsolatedAsyncioTestCase):
             description="Test agent",
             system_prompt="Test prompt",
             tools=(),
-            skills_dir=None,
             model=None,
         )
         runtime.model_name = "gemini-test"

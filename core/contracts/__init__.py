@@ -24,11 +24,8 @@ from core.contracts.memory import (
 )
 from core.contracts.skills import (
     VALID_SKILL_CLASSES,
-    VALID_SKILL_MODES,
-    VALID_SKILL_TYPES,
     SkillDefinition,
     ensure_skill_ids,
-    ensure_skill_scopes,
     register_skill,
 )
 from core.contracts.tools import (
@@ -72,13 +69,10 @@ __all__ = [
     "ToolModule",
     "VALID_RUNTIME_MODES",
     "VALID_SKILL_CLASSES",
-    "VALID_SKILL_MODES",
-    "VALID_SKILL_TYPES",
     "build_adk_tools",
     "create_tool",
     "current_progress",
     "ensure_skill_ids",
-    "ensure_skill_scopes",
     "ensure_execution_config",
     "ensure_agent_hooks",
     "ensure_memory_config",

@@ -47,16 +47,6 @@ class HistoryMessage(BaseModel):
     text: str
 
 
-def _parse_csv_field(value: Optional[str]) -> List[str]:
-    if not value:
-        return []
-    return [
-        item.strip()
-        for item in value.split(",")
-        if item.strip()
-    ]
-
-
 @app.get("/api/health")
 async def health() -> JSONResponse:
     return JSONResponse({"ok": True})
@@ -116,13 +106,6 @@ async def upload_skill(
     file: UploadFile = File(...),
     user_id: str = Form("browser-user"),
     namespace: str = Form(""),
-    title: Optional[str] = Form(None),
-    summary: Optional[str] = Form(None),
-    skill_type: str = Form("knowledge"),
-    mode: str = Form("auto"),
-    tags: Optional[str] = Form(None),
-    triggers: Optional[str] = Form(None),
-    priority: int = Form(60),
 ) -> JSONResponse:
     file_name = (file.filename or "").strip()
     if not file_name:
@@ -142,13 +125,6 @@ async def upload_skill(
             content=content,
             uploader_id=user_id,
             namespace=namespace,
-            title=title,
-            summary=summary,
-            skill_type=skill_type,
-            mode=mode,
-            tags=_parse_csv_field(tags),
-            triggers=_parse_csv_field(triggers),
-            priority=priority,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -157,11 +133,9 @@ async def upload_skill(
         {
             "skill": uploaded,
             "usage": {
-                "recommended_type": "knowledge",
                 "note": (
-                    "Uploaded markdown is treated as user-scoped shared knowledge by default. "
-                    "It is available across all agents for the same user id. "
-                    "Use persona only for short, stable behavior-shaping instructions."
+                    "Uploaded markdown is treated as user-scoped knowledge. "
+                    "It is available across all agents for the same user id."
                 ),
             },
         }

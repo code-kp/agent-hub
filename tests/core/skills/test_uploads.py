@@ -15,8 +15,6 @@ class SkillUploadsTest(unittest.TestCase):
                 content="# Refund FAQ\n\nRefunds are available within 30 days for annual plans.\n",
                 uploader_id="browser-user",
                 namespace="billing/policies",
-                tags=("billing", "refund"),
-                triggers=("refund", "annual plan"),
             )
 
             self.assertEqual(definition.id, "uploads.browser-user.billing.policies.refund-faq")
@@ -24,43 +22,27 @@ class SkillUploadsTest(unittest.TestCase):
                 definition.source,
                 "uploads/browser-user/billing/policies/refund-faq.md",
             )
-            self.assertEqual(definition.skill_type, "knowledge")
-            self.assertEqual(definition.mode, "auto")
+            self.assertEqual(definition.skill_class, "knowledge")
             self.assertEqual(definition.title, "Refund FAQ")
             self.assertIn("Refunds are available within 30 days", definition.body)
-            self.assertIn("uploaded", definition.tags)
-            self.assertIn("browser-user", definition.tags)
 
-    def test_create_uploaded_skill_preserves_explicit_frontmatter_when_not_overridden(self) -> None:
+    def test_create_uploaded_skill_rewrites_markdown_without_frontmatter(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             skills_root = Path(tmp)
             definition = create_uploaded_skill(
                 skills_root=skills_root,
                 file_name="persona.md",
-                content="""---
-title: Premium Persona
-type: persona
-summary: Keep replies brief and polished.
-tags: [persona, style]
-mode: always_on
-priority: 95
----
-
-# Premium Persona
+                content="""# Premium Persona
 
 Reply briefly and keep a polished tone.
 """,
                 uploader_id="designer",
                 namespace="profiles",
-                skill_type="persona",
-                mode="always_on",
             )
 
             self.assertEqual(definition.title, "Premium Persona")
-            self.assertEqual(definition.skill_type, "persona")
-            self.assertEqual(definition.mode, "always_on")
-            self.assertEqual(definition.priority, 95)
-            self.assertIn("style", definition.tags)
+            self.assertEqual(definition.skill_class, "knowledge")
+            self.assertIn("polished tone", definition.summary)
 
 
 if __name__ == "__main__":
