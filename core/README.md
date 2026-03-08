@@ -51,7 +51,6 @@ Skill ingestion and retrieval.
 - `parser.py`
   - Parses markdown skill files into `SkillDefinition`
   - Uses folder-based `behavior` / `knowledge` classification
-  - Still accepts frontmatter for compatibility
 - `store.py`
   - Maintains the in-memory skill catalog and chunk index
 - `resolver.py`
@@ -439,12 +438,6 @@ Do not:
 - combine behavior guidance and large reference material into one large markdown file
 - put unrelated support knowledge into one huge document
 - require contributors to author retrieval metadata before they can add a useful skill
-
-Compatibility note:
-- frontmatter still loads if it already exists
-- legacy `skill_scopes`, `always_on_skills`, and `skills_dir` still work during migration
-- `behavior_skills` and `knowledge_skills` still work during migration
-- new examples should use `behavior` and `knowledge`
 
 ## Design Principle
 

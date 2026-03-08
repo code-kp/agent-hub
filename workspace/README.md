@@ -13,7 +13,6 @@ Rules:
 - Skill ids come from the directory hierarchy under `skills/`
 - Skill files should live under either `skills/behavior/` or `skills/knowledge/`
 - Agents should use `behavior` and `knowledge`
-- `skill_scopes`, `always_on_skills`, and `skills_dir` still load for compatibility, but are no longer the recommended authoring model
 
 Use [../core/README.md](../core/README.md) for platform internals.
 Use this file for contributor-facing authoring rules.
@@ -216,12 +215,6 @@ Avoid:
 - mixing behavior guidance and large reference docs into one file
 - putting all support knowledge into one giant markdown file
 - requiring authors to think about retrieval metadata before they can write a useful skill
-
-Compatibility note:
-- frontmatter still loads if it already exists
-- old `skill_scopes` and `always_on_skills` still work during migration
-- `behavior_skills` and `knowledge_skills` still work during migration
-- new docs and examples should use `behavior` and `knowledge`
 
 ## Namespace Rules
 
