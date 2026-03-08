@@ -775,6 +775,11 @@ function resolvePythonCommand(config) {
     }
   }
 
+  const workspaceVenvPython = findWorkspaceVenvPython();
+  if (workspaceVenvPython) {
+    return workspaceVenvPython;
+  }
+
   const pythonConfig = vscode.workspace.getConfiguration("python");
   const interpreterPath = pythonConfig.get("defaultInterpreterPath", "");
   if (typeof interpreterPath === "string" && interpreterPath.trim()) {
@@ -785,16 +790,27 @@ function resolvePythonCommand(config) {
   }
 
   const workspaceFolder = getWorkspaceFolder();
-  if (workspaceFolder) {
-    const venvPython = process.platform === "win32"
-      ? path.join(workspaceFolder.uri.fsPath, ".venv", "Scripts", "python.exe")
-      : path.join(workspaceFolder.uri.fsPath, ".venv", "bin", "python");
-    if (fs.existsSync(venvPython)) {
-      return venvPython;
-    }
+  return "python3";
+}
+
+function findWorkspaceVenvPython() {
+  const workspaceFolder = getWorkspaceFolder();
+  if (!workspaceFolder) {
+    return null;
   }
 
-  return "python3";
+  const workspaceRoot = workspaceFolder.uri.fsPath;
+  const candidates = process.platform === "win32"
+    ? [
+        path.join(workspaceRoot, ".venv", "Scripts", "python.exe"),
+        path.join(workspaceRoot, "venv", "Scripts", "python.exe"),
+      ]
+    : [
+        path.join(workspaceRoot, ".venv", "bin", "python"),
+        path.join(workspaceRoot, "venv", "bin", "python"),
+      ];
+
+  return candidates.find((candidate) => fs.existsSync(candidate)) || null;
 }
 
 function expandConfiguredPath(value) {
