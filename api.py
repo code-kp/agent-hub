@@ -48,7 +48,10 @@ def _parse_sse_frame(frame: str) -> Optional[Dict[str, Any]]:
         if not isinstance(payload, dict):
             payload = {"payload": payload}
     except json.JSONDecodeError:
-        payload = {"message": "Failed to parse stream payload.", "raw": "\n".join(data_lines)}
+        payload = {
+            "message": "Failed to parse stream payload.",
+            "raw": "\n".join(data_lines),
+        }
 
     payload.setdefault("type", event_type)
     return payload
@@ -96,7 +99,11 @@ class AgentApi:
         session_id: Optional[str] = None,
         stream: bool = True,
     ) -> Tuple[str, str, AsyncIterator[Dict[str, Any]]]:
-        resolved_agent_id, next_session_id, raw_stream = await self.platform.stream_chat(
+        (
+            resolved_agent_id,
+            next_session_id,
+            raw_stream,
+        ) = await self.platform.stream_chat(
             agent_id=agent_id,
             message=message,
             user_id=user_id,
@@ -223,7 +230,16 @@ async def _run_repl(api: AgentApi, agent_id: Optional[str], user_id: str) -> Non
                 text = event.get("text", "")
                 if isinstance(text, str) and not printed_inline:
                     print(text, end="", flush=True)
-            elif event_type in {"tool_started", "tool_completed", "tool_log", "skill_context_selected", "tool_selection_reason", "run_started", "run_completed", "error"}:
+            elif event_type in {
+                "tool_started",
+                "tool_completed",
+                "tool_log",
+                "skill_context_selected",
+                "tool_selection_reason",
+                "run_started",
+                "run_completed",
+                "error",
+            }:
                 if printed_inline:
                     print()
                     printed_inline = False
@@ -234,7 +250,9 @@ async def _run_repl(api: AgentApi, agent_id: Optional[str], user_id: str) -> Non
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Agent platform API entrypoint.")
-    parser.add_argument("--user-id", default="cli-user", help="User identifier for session tracking.")
+    parser.add_argument(
+        "--user-id", default="cli-user", help="User identifier for session tracking."
+    )
     parser.add_argument("--agent-id", default=None, help="Specific agent id to use.")
 
     subparsers = parser.add_subparsers(dest="command")
@@ -242,7 +260,9 @@ def _build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("list", help="List discovered agents.")
     subparsers.add_parser("catalog", help="Print the full catalog JSON payload.")
 
-    chat_parser = subparsers.add_parser("chat", help="Send one message and print final response.")
+    chat_parser = subparsers.add_parser(
+        "chat", help="Send one message and print final response."
+    )
     chat_parser.add_argument("message", help="Message to send.")
 
     subparsers.add_parser("repl", help="Interactive chat session.")

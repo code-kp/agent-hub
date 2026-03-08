@@ -55,7 +55,11 @@ class OrchestratedController(BaseAgent):
         ):
             yield event
         plan_payload = plan_capture.get("output")
-        plan = self._default_plan(ctx) if not plan_payload else orchestrated_models.Plan.model_validate(plan_payload)
+        plan = (
+            self._default_plan(ctx)
+            if not plan_payload
+            else orchestrated_models.Plan.model_validate(plan_payload)
+        )
         self._set_plan(ctx, plan)
         yield self._thinking_event(
             ctx,
@@ -88,9 +92,13 @@ class OrchestratedController(BaseAgent):
                         answer="",
                     )
                     if not verification_payload
-                    else orchestrated_models.Verification.model_validate(verification_payload)
+                    else orchestrated_models.Verification.model_validate(
+                        verification_payload
+                    )
                 )
-                ctx.session.state[VERIFICATION_STATE_KEY] = verification.model_dump(exclude_none=True)
+                ctx.session.state[VERIFICATION_STATE_KEY] = verification.model_dump(
+                    exclude_none=True
+                )
                 if verification.ready:
                     yield self._thinking_event(
                         ctx,
@@ -110,7 +118,11 @@ class OrchestratedController(BaseAgent):
                         yield event
                     return
 
-                if replan_count >= self.execution_config.max_replans or verification_rounds >= self.execution_config.max_verification_rounds:
+                if (
+                    replan_count >= self.execution_config.max_replans
+                    or verification_rounds
+                    >= self.execution_config.max_verification_rounds
+                ):
                     fallback = self._fallback_answer(verification)
                     yield self._thinking_event(
                         ctx,
@@ -153,7 +165,9 @@ class OrchestratedController(BaseAgent):
                         ctx,
                         step_id="replan",
                         label="Plan revised",
-                        detail=orchestrated_prompts.summarize_plan(decision.updated_plan),
+                        detail=orchestrated_prompts.summarize_plan(
+                            decision.updated_plan
+                        ),
                         state="done",
                     )
                     continue
@@ -180,7 +194,10 @@ class OrchestratedController(BaseAgent):
                 capture=executor_capture,
             ):
                 yield event
-            step_summary = str(executor_capture.get("text") or "").strip() or "Completed the step without a written findings note."
+            step_summary = (
+                str(executor_capture.get("text") or "").strip()
+                or "Completed the step without a written findings note."
+            )
             self._record_step_completion(ctx, next_step, step_summary)
             yield self._thinking_event(
                 ctx,
@@ -227,7 +244,11 @@ class OrchestratedController(BaseAgent):
                 )
                 self._mark_plan_complete(ctx)
                 continue
-            if decision.action == "replan" and decision.updated_plan and replan_count < self.execution_config.max_replans:
+            if (
+                decision.action == "replan"
+                and decision.updated_plan
+                and replan_count < self.execution_config.max_replans
+            ):
                 replan_count += 1
                 self._set_plan(ctx, decision.updated_plan)
                 yield self._thinking_event(
@@ -279,7 +300,9 @@ class OrchestratedController(BaseAgent):
         ctx.session.state[HOOK_STATE_KEY] = self.agent_hooks.create_turn_state(
             agent_id=self.name,
             user_id=str(getattr(ctx.session, "user_id", "") or ""),
-            session_id=str(getattr(ctx.session, "id", getattr(ctx.session, "session_id", "")) or ""),
+            session_id=str(
+                getattr(ctx.session, "id", getattr(ctx.session, "session_id", "")) or ""
+            ),
             message=_current_user_text(ctx),
         )
         ctx.session.state[CURRENT_STEP_STATE_KEY] = {}
@@ -305,7 +328,9 @@ class OrchestratedController(BaseAgent):
         ctx.session.state[PLAN_STATE_KEY] = plan.model_dump(exclude_none=True)
         ctx.session.state[COMPLETED_STEP_IDS_STATE_KEY] = []
 
-    def _set_current_step(self, ctx: InvocationContext, step: orchestrated_models.PlanStep) -> None:
+    def _set_current_step(
+        self, ctx: InvocationContext, step: orchestrated_models.PlanStep
+    ) -> None:
         ctx.session.state[CURRENT_STEP_STATE_KEY] = step.model_dump(exclude_none=True)
 
     def _record_step_completion(
@@ -329,7 +354,9 @@ class OrchestratedController(BaseAgent):
         ctx.session.state[LAST_STEP_STATE_KEY] = entry
         ctx.session.state[CURRENT_STEP_STATE_KEY] = {}
 
-    def _set_completed_steps(self, ctx: InvocationContext, completed_step_ids: list[str]) -> None:
+    def _set_completed_steps(
+        self, ctx: InvocationContext, completed_step_ids: list[str]
+    ) -> None:
         ctx.session.state[COMPLETED_STEP_IDS_STATE_KEY] = list(completed_step_ids)
 
     def _mark_plan_complete(self, ctx: InvocationContext) -> None:
@@ -337,9 +364,13 @@ class OrchestratedController(BaseAgent):
         if not plan_payload:
             return
         plan = orchestrated_models.Plan.model_validate(plan_payload)
-        ctx.session.state[COMPLETED_STEP_IDS_STATE_KEY] = [step.id for step in plan.steps]
+        ctx.session.state[COMPLETED_STEP_IDS_STATE_KEY] = [
+            step.id for step in plan.steps
+        ]
 
-    def _next_pending_step(self, ctx: InvocationContext) -> Optional[orchestrated_models.PlanStep]:
+    def _next_pending_step(
+        self, ctx: InvocationContext
+    ) -> Optional[orchestrated_models.PlanStep]:
         plan_payload = ctx.session.state.get(PLAN_STATE_KEY) or {}
         if not plan_payload:
             return None
@@ -356,12 +387,12 @@ class OrchestratedController(BaseAgent):
         if verification.writer_brief.strip():
             return verification.writer_brief.strip()
         if verification.missing_information:
-            return (
-                "I could not fully verify the answer yet. Missing information: {items}.".format(
-                    items="; ".join(verification.missing_information),
-                )
+            return "I could not fully verify the answer yet. Missing information: {items}.".format(
+                items="; ".join(verification.missing_information),
             )
-        return "I could not complete a fully verified answer with the available evidence."
+        return (
+            "I could not complete a fully verified answer with the available evidence."
+        )
 
     def _thinking_event(
         self,
@@ -395,7 +426,9 @@ class OrchestratedController(BaseAgent):
         refreshed = self.agent_hooks.create_turn_state(
             agent_id=self.name,
             user_id=str(getattr(ctx.session, "user_id", "") or ""),
-            session_id=str(getattr(ctx.session, "id", getattr(ctx.session, "session_id", "")) or ""),
+            session_id=str(
+                getattr(ctx.session, "id", getattr(ctx.session, "session_id", "")) or ""
+            ),
             message=_current_user_text(ctx),
         )
         ctx.session.state[HOOK_STATE_KEY] = refreshed
@@ -436,12 +469,16 @@ class OrchestratedController(BaseAgent):
                         author=self.name,
                         invocation_id=ctx.invocation_id,
                         partial=True,
-                        content=types.Content(role="model", parts=[types.Part(text=text)]),
+                        content=types.Content(
+                            role="model", parts=[types.Part(text=text)]
+                        ),
                     )
                     continue
 
                 if event.is_final_response() and (text or assembled_text):
-                    final_text = "{buffer}{tail}".format(buffer=assembled_text, tail=text).strip()
+                    final_text = "{buffer}{tail}".format(
+                        buffer=assembled_text, tail=text
+                    ).strip()
                     yield self._final_answer_event(ctx, final_text)
                     return
 
@@ -454,7 +491,11 @@ class OrchestratedController(BaseAgent):
                 rationale="Writer returned no final text.",
             )
         )
-        fallback = verification.answer.strip() or verification.writer_brief.strip() or self._fallback_answer(verification)
+        fallback = (
+            verification.answer.strip()
+            or verification.writer_brief.strip()
+            or self._fallback_answer(verification)
+        )
         yield self._final_answer_event(ctx, fallback)
 
 
@@ -569,14 +610,22 @@ def build_orchestrated_controller(
         writer_agent=writer_agent,
         execution_config=execution_config,
         agent_hooks=agent_hooks,
-        sub_agents=[planner_agent, executor_agent, replanner_agent, verifier_agent, writer_agent],
+        sub_agents=[
+            planner_agent,
+            executor_agent,
+            replanner_agent,
+            verifier_agent,
+            writer_agent,
+        ],
     )
 
 
 def _event_text(event: Event) -> str:
     if not event.content or not event.content.parts:
         return ""
-    return "".join(part.text for part in event.content.parts if getattr(part, "text", None))
+    return "".join(
+        part.text for part in event.content.parts if getattr(part, "text", None)
+    )
 
 
 def _hook_state_from_context(ctx: ReadonlyContext) -> contracts_hooks.HookState:
@@ -591,4 +640,6 @@ def _current_user_text(ctx: InvocationContext) -> str:
     user_content = getattr(ctx, "user_content", None)
     if not user_content or not getattr(user_content, "parts", None):
         return ""
-    return "".join(part.text for part in user_content.parts if getattr(part, "text", None))
+    return "".join(
+        part.text for part in user_content.parts if getattr(part, "text", None)
+    )

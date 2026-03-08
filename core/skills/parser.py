@@ -37,11 +37,15 @@ def parse_skill_file(path: Path, skills_root: Path) -> SkillDefinition:
     source = str(path.relative_to(skills_root)).replace("\\", "/")
     skill_class = infer_skill_class(path, skills_root)
 
-    title = str(extract_title(normalized_body) or path.stem.replace("_", " ").title()).strip()
+    title = str(
+        extract_title(normalized_body) or path.stem.replace("_", " ").title()
+    ).strip()
     summary = str(extract_summary(normalized_body) or title).strip()
 
     if not title:
-        raise ValueError("Skill {skill_id} is missing a title.".format(skill_id=skill_id))
+        raise ValueError(
+            "Skill {skill_id} is missing a title.".format(skill_id=skill_id)
+        )
     if skill_class not in VALID_SKILL_CLASSES:
         raise ValueError(
             "Skill {skill_id} has unsupported class: {skill_class}".format(
@@ -50,7 +54,9 @@ def parse_skill_file(path: Path, skills_root: Path) -> SkillDefinition:
             )
         )
     if not summary:
-        raise ValueError("Skill {skill_id} is missing a summary.".format(skill_id=skill_id))
+        raise ValueError(
+            "Skill {skill_id} is missing a summary.".format(skill_id=skill_id)
+        )
 
     return SkillDefinition(
         id=skill_id,
@@ -65,17 +71,22 @@ def parse_skill_file(path: Path, skills_root: Path) -> SkillDefinition:
 
 def infer_skill_class(path: Path, skills_root: Path) -> str:
     relative = path.relative_to(skills_root)
-    parts = [part.strip().lower() for part in relative.with_suffix("").parts if part.strip()]
+    parts = [
+        part.strip().lower() for part in relative.with_suffix("").parts if part.strip()
+    ]
     if not parts:
-        raise ValueError("Skill file must live under a behavior, knowledge, or uploads folder.")
+        raise ValueError(
+            "Skill file must live under a behavior, knowledge, or uploads folder."
+        )
     root = parts[0]
     if root in CLASSIFIED_SKILL_ROOTS:
         return root
     if root == "uploads":
         return "knowledge"
     raise ValueError(
-        "Skill {path} must live under workspace/skills/behavior, workspace/skills/knowledge, or workspace/skills/uploads."
-        .format(path=str(path))
+        "Skill {path} must live under workspace/skills/behavior, workspace/skills/knowledge, or workspace/skills/uploads.".format(
+            path=str(path)
+        )
     )
 
 

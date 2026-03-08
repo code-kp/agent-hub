@@ -1,7 +1,12 @@
 import inspect
 import unittest
 
-from core.contracts.tools import ToolDefinition, ToolModule, ensure_tools, register_tool_class
+from core.contracts.tools import (
+    ToolDefinition,
+    ToolModule,
+    ensure_tools,
+    register_tool_class,
+)
 from core.registry import Register
 
 
@@ -39,7 +44,9 @@ class ToolContractsTest(unittest.TestCase):
         definition = ensure_tools((CoreSearchTool,))[0]
         callable_tool = definition.build_callable()
 
-        self.assertEqual(inspect.signature(callable_tool), inspect.signature(definition.handler))
+        self.assertEqual(
+            inspect.signature(callable_tool), inspect.signature(definition.handler)
+        )
         self.assertIn(callable_tool.__annotations__.get("query"), ("str", str))
         self.assertIn(callable_tool.__annotations__.get("return"), ("dict", dict))
 

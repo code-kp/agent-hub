@@ -42,7 +42,9 @@ DEFAULT_MODEL_TIMEOUT_SECONDS = 60.0
 class DirectAgentRuntime:
     def __init__(self, record: runtime_types.AgentRecord) -> None:
         self.record = record
-        self.definition = registry.Register.get(contracts_agent.Agent, record.agent_name)
+        self.definition = registry.Register.get(
+            contracts_agent.Agent, record.agent_name
+        )
         self.execution: contracts_execution.ExecutionConfig = self.definition.execution
         self.memory: contracts_memory.MemoryConfig = self.definition.memory
         self.hooks: contracts_hooks.AgentHooks = self.definition.hooks
@@ -50,27 +52,41 @@ class DirectAgentRuntime:
         self.model_timeout_seconds = self._resolve_model_timeout_seconds()
         self._resolved_tools = contracts_tools.ensure_tools(self.definition.tools)
         self._tool_definitions: Dict[str, contracts_tools.ToolDefinition] = {
-            tool.name: tool
-            for tool in self._resolved_tools
+            tool.name: tool for tool in self._resolved_tools
         }
         self._tool_descriptions: Dict[str, str] = {
-            tool.name: (tool.description or "")
-            for tool in self._resolved_tools
+            tool.name: (tool.description or "") for tool in self._resolved_tools
         }
-        self._resolved_skills: contextvars.ContextVar[skills_resolver.ResolvedSkillContext] = contextvars.ContextVar(
-            "resolved_skills_{agent_id}".format(agent_id=record.agent_id.replace(".", "_")),
+        self._resolved_skills: contextvars.ContextVar[
+            skills_resolver.ResolvedSkillContext
+        ] = contextvars.ContextVar(
+            "resolved_skills_{agent_id}".format(
+                agent_id=record.agent_id.replace(".", "_")
+            ),
             default=skills_resolver.ResolvedSkillContext(),
         )
-        self._tool_guardrails: contextvars.ContextVar[Optional[guardrails_module.ToolLoopGuardrails]] = contextvars.ContextVar(
-            "tool_guardrails_{agent_id}".format(agent_id=record.agent_id.replace(".", "_")),
+        self._tool_guardrails: contextvars.ContextVar[
+            Optional[guardrails_module.ToolLoopGuardrails]
+        ] = contextvars.ContextVar(
+            "tool_guardrails_{agent_id}".format(
+                agent_id=record.agent_id.replace(".", "_")
+            ),
             default=None,
         )
-        self._conversation_history: contextvars.ContextVar[list[dict[str, str]]] = contextvars.ContextVar(
-            "conversation_history_{agent_id}".format(agent_id=record.agent_id.replace(".", "_")),
-            default=[],
+        self._conversation_history: contextvars.ContextVar[list[dict[str, str]]] = (
+            contextvars.ContextVar(
+                "conversation_history_{agent_id}".format(
+                    agent_id=record.agent_id.replace(".", "_")
+                ),
+                default=[],
+            )
         )
-        self._conversation_memory: contextvars.ContextVar[memory_module.MemorySnapshot] = contextvars.ContextVar(
-            "conversation_memory_{agent_id}".format(agent_id=record.agent_id.replace(".", "_")),
+        self._conversation_memory: contextvars.ContextVar[
+            memory_module.MemorySnapshot
+        ] = contextvars.ContextVar(
+            "conversation_memory_{agent_id}".format(
+                agent_id=record.agent_id.replace(".", "_")
+            ),
             default=memory_module.MemorySnapshot(),
         )
         self.skill_store = self._load_skill_store()
@@ -108,7 +124,9 @@ class DirectAgentRuntime:
         return DEFAULT_MODEL, "default"
 
     def _resolve_model_timeout_seconds(self) -> float:
-        raw_value = os.getenv("MODEL_RESPONSE_TIMEOUT_SECONDS", str(DEFAULT_MODEL_TIMEOUT_SECONDS))
+        raw_value = os.getenv(
+            "MODEL_RESPONSE_TIMEOUT_SECONDS", str(DEFAULT_MODEL_TIMEOUT_SECONDS)
+        )
         try:
             value = float(raw_value)
         except (TypeError, ValueError):
@@ -123,7 +141,9 @@ class DirectAgentRuntime:
             definition=self.definition,
             tool_definitions=tuple(self._tool_definitions.values()),
             execution=self.execution,
-            additional_guidance=self.hooks.build_prompt_guidance(phase="direct", state={}),
+            additional_guidance=self.hooks.build_prompt_guidance(
+                phase="direct", state={}
+            ),
         )
         return runtime_adk.create_llm_agent(
             agent_id=self.record.agent_id,
@@ -299,8 +319,12 @@ class DirectAgentRuntime:
 
         try:
             skill_store_token = skills_context.bind_skill_store(self.skill_store)
-            tool_guardrails_token = self._tool_guardrails.set(guardrails_module.ToolLoopGuardrails(self.execution))
-            history_token = self._conversation_history.set(runtime_prompts.normalize_conversation_history(history or []))
+            tool_guardrails_token = self._tool_guardrails.set(
+                guardrails_module.ToolLoopGuardrails(self.execution)
+            )
+            history_token = self._conversation_history.set(
+                runtime_prompts.normalize_conversation_history(history or [])
+            )
             await self.ensure_session(user_id=user_id, session_id=session_id)
             memory_snapshot = await self.memory_manager.prepare_turn(
                 user_id=user_id,
@@ -340,7 +364,9 @@ class DirectAgentRuntime:
                 stream_output=stream_output,
                 usage_aggregator=usage_aggregator,
             )
-            final_response_text = str(hook_state.get("_final_response_text") or "").strip()
+            final_response_text = str(
+                hook_state.get("_final_response_text") or ""
+            ).strip()
             if self.memory.enabled and final_response_text:
                 updated_memory = await self.memory_manager.record_turn(
                     user_id=user_id,
@@ -354,7 +380,9 @@ class DirectAgentRuntime:
                 {
                     "agent_id": self.record.agent_id,
                     "session_id": session_id,
-                    "message": stream_messages.build_run_completed_message(self.definition.name),
+                    "message": stream_messages.build_run_completed_message(
+                        self.definition.name
+                    ),
                 },
             )
         except asyncio.TimeoutError:
@@ -408,7 +436,9 @@ class DirectAgentRuntime:
                 "agent_id": self.record.agent_id,
                 "session_id": session_id,
                 "user_id": user_id,
-                "message": stream_messages.build_run_started_message(self.definition.name),
+                "message": stream_messages.build_run_started_message(
+                    self.definition.name
+                ),
             },
         )
         await stream_progress.emit_thinking_step(
@@ -434,7 +464,9 @@ class DirectAgentRuntime:
                 state="done",
                 agent_id=self.record.agent_id,
             )
-        resolved_context = await asyncio.to_thread(self._resolve_skills, message, user_id)
+        resolved_context = await asyncio.to_thread(
+            self._resolve_skills, message, user_id
+        )
         await stream_progress.emit_debug_event(
             "skill_context_selected",
             agent_id=self.record.agent_id,
@@ -450,7 +482,9 @@ class DirectAgentRuntime:
             ],
             message=skills_resolver.describe_resolved_skill_context(resolved_context),
         )
-        skill_label, skill_detail, skill_state = runtime_prompts.skill_context_thinking(resolved_context)
+        skill_label, skill_detail, skill_state = runtime_prompts.skill_context_thinking(
+            resolved_context
+        )
         await stream_progress.emit_thinking_step(
             step_id="guidance",
             label=skill_label,
@@ -636,14 +670,18 @@ class DirectAgentRuntime:
                 agent_id=self.record.agent_id,
                 tool_name=call.name,
                 reason=selection_reason,
-                message=stream_messages.build_tool_selection_message(call.name, selection_reason),
+                message=stream_messages.build_tool_selection_message(
+                    call.name, selection_reason
+                ),
             )
             await stream_progress.emit_debug_event(
                 "tool_started",
                 agent_id=self.record.agent_id,
                 tool_name=call.name,
                 args=call.args,
-                message=stream_messages.build_tool_started_message(call.name, call.args or {}),
+                message=stream_messages.build_tool_started_message(
+                    call.name, call.args or {}
+                ),
             )
 
     async def _emit_tool_response_events(
@@ -670,7 +708,9 @@ class DirectAgentRuntime:
                 ),
             )
 
-    def _resolve_skills(self, query: str, user_id: str) -> skills_resolver.ResolvedSkillContext:
+    def _resolve_skills(
+        self, query: str, user_id: str
+    ) -> skills_resolver.ResolvedSkillContext:
         return self.skill_resolver.resolve(
             query=query,
             user_id=user_id,

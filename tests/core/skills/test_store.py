@@ -9,7 +9,9 @@ class SkillStoreTest(unittest.TestCase):
     def test_chunking_and_retrieval_prefers_relevant_sections(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             skills_dir = Path(tmp)
-            (skills_dir / "knowledge" / "billing.md").parent.mkdir(parents=True, exist_ok=True)
+            (skills_dir / "knowledge" / "billing.md").parent.mkdir(
+                parents=True, exist_ok=True
+            )
             (skills_dir / "knowledge" / "billing.md").write_text(
                 """# Billing
 
@@ -34,7 +36,9 @@ The API allows 100 requests per minute per key.
             )
 
             store = SkillStore(skills_dir)
-            results = store.select_relevant_chunks("What is the refund policy?", max_chunks=2)
+            results = store.select_relevant_chunks(
+                "What is the refund policy?", max_chunks=2
+            )
 
             self.assertTrue(results)
             self.assertEqual(results[0].skill_id, "billing")

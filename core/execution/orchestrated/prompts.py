@@ -19,7 +19,9 @@ def planner_instruction(
     return "\n\n".join(
         part
         for part in [
-            "You are the planning controller for {agent_name}.".format(agent_name=agent_name),
+            "You are the planning controller for {agent_name}.".format(
+                agent_name=agent_name
+            ),
             "Follow this agent behavior guidance when making the plan:",
             system_prompt.strip(),
             "Create a concrete multi-step plan before execution starts.",
@@ -65,7 +67,9 @@ def executor_instruction(
                 "Current step:",
                 "- Title: {value}".format(value=current_step.get("title", "")),
                 "- Objective: {value}".format(value=current_step.get("objective", "")),
-                "- Success criteria: {value}".format(value=current_step.get("success_criteria", "")),
+                "- Success criteria: {value}".format(
+                    value=current_step.get("success_criteria", "")
+                ),
             ]
         )
     if completed:
@@ -93,7 +97,9 @@ def replanner_instruction(
     current_step = state.get("orchestrated:last_step") or {}
 
     lines = [
-        "You are the replanning controller for {agent_name}.".format(agent_name=agent_name),
+        "You are the replanning controller for {agent_name}.".format(
+            agent_name=agent_name
+        ),
         "Follow this agent behavior guidance when deciding what to do next:",
         system_prompt.strip(),
         "Decide whether the workflow should continue with the remaining plan, replan, or finalize for verification.",
@@ -179,7 +185,9 @@ def writer_instruction(
     )
 
     lines = [
-        "You are the final response writer for {agent_name}.".format(agent_name=agent_name),
+        "You are the final response writer for {agent_name}.".format(
+            agent_name=agent_name
+        ),
         "Follow this agent behavior guidance while writing the response:",
         system_prompt.strip(),
         "Write the final user-facing answer now.",
@@ -250,5 +258,7 @@ def current_user_block(ctx: ReadonlyContext) -> str:
     user_text = ""
     user_content = getattr(ctx, "user_content", None)
     if user_content and getattr(user_content, "parts", None):
-        user_text = "".join(part.text for part in user_content.parts if getattr(part, "text", None))
+        user_text = "".join(
+            part.text for part in user_content.parts if getattr(part, "text", None)
+        )
     return "Current user request:\n{message}".format(message=user_text.strip())

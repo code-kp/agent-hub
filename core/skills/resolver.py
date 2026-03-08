@@ -54,8 +54,12 @@ class SkillResolver:
         behavior_skill_ids = set(ensure_skill_ids(behavior_ids))
         knowledge_skill_ids = set(ensure_skill_ids(knowledge_ids))
 
-        behavior_skills = self._resolve_explicit_skills(behavior_skill_ids, expected_class="behavior")
-        knowledge_candidates = self._resolve_explicit_skills(knowledge_skill_ids, expected_class="knowledge")
+        behavior_skills = self._resolve_explicit_skills(
+            behavior_skill_ids, expected_class="behavior"
+        )
+        knowledge_candidates = self._resolve_explicit_skills(
+            knowledge_skill_ids, expected_class="knowledge"
+        )
         knowledge_candidates.extend(self._resolve_user_upload_knowledge(user_id))
 
         behavior_skill_set = {skill.id for skill in behavior_skills}
@@ -134,8 +138,12 @@ class SkillResolver:
                 overlap += 1.0
 
         query_text = query.lower()
-        title_bonus = 1.5 if any(token in skill.title.lower() for token in query_tokens) else 0.0
-        summary_bonus = 1.0 if query_text and query_text in skill.summary.lower() else 0.0
+        title_bonus = (
+            1.5 if any(token in skill.title.lower() for token in query_tokens) else 0.0
+        )
+        summary_bonus = (
+            1.0 if query_text and query_text in skill.summary.lower() else 0.0
+        )
         phrase_bonus = 1.0 if query_text and query_text in skill.body.lower() else 0.0
 
         return overlap + title_bonus + summary_bonus + phrase_bonus

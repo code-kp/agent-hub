@@ -166,8 +166,12 @@ class DirectRuntimeTest(unittest.IsolatedAsyncioTestCase):
             )
 
         events = await self._collect_events(stream)
-        delta_text = "".join(event["text"] for event in events if event["type"] == "assistant_delta")
-        final_message = next(event for event in events if event["type"] == "assistant_message")
+        delta_text = "".join(
+            event["text"] for event in events if event["type"] == "assistant_delta"
+        )
+        final_message = next(
+            event for event in events if event["type"] == "assistant_message"
+        )
 
         self.assertEqual(delta_text, "Hello ")
         self.assertEqual(final_message["text"], "Hello world")

@@ -13,9 +13,7 @@ class SearchSkillsTool(ToolModule):
         "The answer likely depends on internal guidance, workflows, policy, or product reference material.",
         "You need to find the most relevant skill excerpts before answering.",
     )
-    avoid_when = (
-        "Fresh public information is required from the web.",
-    )
+    avoid_when = ("Fresh public information is required from the web.",)
     returns = "Relevant skill chunks with ids, headings, and text excerpts."
     follow_up_tools = ("read_skill_file",)
 
@@ -27,11 +25,15 @@ class SearchSkillsTool(ToolModule):
             detail="Searching the shared guidance library for the most relevant sections.",
             step_id="search_skills",
         )
-        self.progress.debug("Searching indexed skill chunks.", query=query, max_results=max_results)
+        self.progress.debug(
+            "Searching indexed skill chunks.", query=query, max_results=max_results
+        )
         results = store.search(query=query, max_results=max_results)
         self.progress.think(
             "Relevant guidance found",
-            detail="Found {count} likely match(es) in the shared guidance library.".format(count=len(results)),
+            detail="Found {count} likely match(es) in the shared guidance library.".format(
+                count=len(results)
+            ),
             step_id="search_skills",
             state="done",
         )
@@ -60,7 +62,9 @@ class ListSkillFilesTool(ToolModule):
         skills = store.describe()
         self.progress.think(
             "Available guidance reviewed",
-            detail="Found {count} shared skill definition(s).".format(count=len(skills)),
+            detail="Found {count} shared skill definition(s).".format(
+                count=len(skills)
+            ),
             step_id="list_skill_files",
             state="done",
         )

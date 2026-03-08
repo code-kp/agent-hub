@@ -120,7 +120,9 @@ def _normalize_inline_citations(text: str, source_urls: Sequence[str]) -> str:
 
             index = int(number) - 1
             if 0 <= index < len(source_urls):
-                rendered.append("[{number}]({url})".format(number=number, url=source_urls[index]))
+                rendered.append(
+                    "[{number}]({url})".format(number=number, url=source_urls[index])
+                )
                 changed = True
             else:
                 rendered.append("[{number}]".format(number=number))

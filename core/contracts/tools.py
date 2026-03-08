@@ -131,7 +131,9 @@ class ToolModule:
     def progress(self) -> ProgressUpdater:
         return current_progress()
 
-    def run(self, *args: Any, **kwargs: Any) -> Any:  # pragma: no cover - author contract
+    def run(
+        self, *args: Any, **kwargs: Any
+    ) -> Any:  # pragma: no cover - author contract
         raise NotImplementedError("ToolModule subclasses must implement run().")
 
 
@@ -164,16 +166,27 @@ def create_tool(
 
 
 def tool_from_class(tool_cls: ToolClass) -> ToolDefinition:
-    if not inspect.isclass(tool_cls) or not issubclass(tool_cls, ToolModule) or tool_cls is ToolModule:
+    if (
+        not inspect.isclass(tool_cls)
+        or not issubclass(tool_cls, ToolModule)
+        or tool_cls is ToolModule
+    ):
         raise TypeError("tool_from_class expects a ToolModule subclass.")
 
     instance = tool_cls()
     handler = getattr(instance, "run", None)
     if handler is None:
-        raise ValueError("Tool class {name} does not define run().".format(name=tool_cls.__name__))
+        raise ValueError(
+            "Tool class {name} does not define run().".format(name=tool_cls.__name__)
+        )
 
-    if getattr(getattr(handler, "__func__", None), "__qualname__", "") == ToolModule.run.__qualname__:
-        raise ValueError("Tool class {name} must override run().".format(name=tool_cls.__name__))
+    if (
+        getattr(getattr(handler, "__func__", None), "__qualname__", "")
+        == ToolModule.run.__qualname__
+    ):
+        raise ValueError(
+            "Tool class {name} must override run().".format(name=tool_cls.__name__)
+        )
 
     description = (
         str(getattr(tool_cls, "description", "") or "").strip()
@@ -194,7 +207,9 @@ def tool_from_class(tool_cls: ToolClass) -> ToolDefinition:
     )
 
 
-def register_tool(tool_definition: ToolDefinition, *, name: Optional[str] = None) -> ToolDefinition:
+def register_tool(
+    tool_definition: ToolDefinition, *, name: Optional[str] = None
+) -> ToolDefinition:
     register_name = (name or tool_definition.name).strip()
     if not register_name:
         raise ValueError("Tool name must be non-empty.")
@@ -226,7 +241,9 @@ def register_core_toolset(
     if not normalized_name:
         raise ValueError("Core toolset name must be non-empty.")
     if not overwrite and normalized_name in _core_toolsets:
-        raise ValueError("Core toolset already exists: {name}".format(name=normalized_name))
+        raise ValueError(
+            "Core toolset already exists: {name}".format(name=normalized_name)
+        )
     normalized_tools = ensure_tool_references(tools, include_core_tools=False)
     _core_toolsets[normalized_name] = normalized_tools
     return normalized_tools
@@ -244,7 +261,11 @@ def resolve_tool(value: ToolLike) -> ToolDefinition:
         return Register.get(ToolDefinition, value)
     if inspect.isclass(value) and issubclass(value, ToolModule):
         return getattr(value, "__tool_definition__", tool_from_class(value))
-    raise TypeError("Unsupported tool reference type: {value_type}".format(value_type=type(value).__name__))
+    raise TypeError(
+        "Unsupported tool reference type: {value_type}".format(
+            value_type=type(value).__name__
+        )
+    )
 
 
 def tool(
@@ -278,7 +299,9 @@ def tool(
 
 
 def build_adk_tools(tool_definitions: Sequence[ToolLike]) -> List[Callable[..., Any]]:
-    return [definition.build_callable() for definition in ensure_tools(tool_definitions)]
+    return [
+        definition.build_callable() for definition in ensure_tools(tool_definitions)
+    ]
 
 
 def ensure_tools(
@@ -332,10 +355,16 @@ def tool_reference_name(value: ToolLike) -> str:
         return value.strip()
     if inspect.isclass(value) and issubclass(value, ToolModule):
         return _tool_name_from_class(value)
-    raise TypeError("Unsupported tool reference type: {value_type}".format(value_type=type(value).__name__))
+    raise TypeError(
+        "Unsupported tool reference type: {value_type}".format(
+            value_type=type(value).__name__
+        )
+    )
 
 
-def _resolve_core_tool_references(core_toolsets: Optional[Sequence[str]]) -> List[ToolLike]:
+def _resolve_core_tool_references(
+    core_toolsets: Optional[Sequence[str]],
+) -> List[ToolLike]:
     names = list(core_toolsets or DEFAULT_CORE_TOOLSETS)
     references: List[ToolLike] = []
     for name in names:

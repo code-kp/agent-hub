@@ -40,10 +40,19 @@ General product details.
                 knowledge_ids=("support.triage",),
             )
 
-            self.assertEqual([skill.id for skill in context.behavior], ["support.persona"])
-            self.assertEqual([skill.id for skill in context.knowledge], ["support.triage"])
+            self.assertEqual(
+                [skill.id for skill in context.behavior], ["support.persona"]
+            )
+            self.assertEqual(
+                [skill.id for skill in context.knowledge], ["support.triage"]
+            )
             self.assertTrue(context.chunks)
-            self.assertTrue(all(chunk.skill_id in {"support.persona", "support.triage"} for chunk in context.chunks))
+            self.assertTrue(
+                all(
+                    chunk.skill_id in {"support.persona", "support.triage"}
+                    for chunk in context.chunks
+                )
+            )
 
     def test_resolver_limits_uploaded_skills_to_matching_user_id(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -77,17 +86,29 @@ Refunds are available within 30 days for annual plans.
                 knowledge_ids=(),
             )
 
-            self.assertEqual([skill.id for skill in matching_context.behavior], ["support.persona"])
+            self.assertEqual(
+                [skill.id for skill in matching_context.behavior], ["support.persona"]
+            )
             self.assertEqual(
                 [skill.id for skill in matching_context.knowledge],
                 ["uploads.browser-user.refund-policy"],
             )
             self.assertTrue(
-                any(chunk.skill_id == "uploads.browser-user.refund-policy" for chunk in matching_context.chunks)
+                any(
+                    chunk.skill_id == "uploads.browser-user.refund-policy"
+                    for chunk in matching_context.chunks
+                )
             )
-            self.assertEqual([skill.id for skill in other_user_context.behavior], ["support.persona"])
+            self.assertEqual(
+                [skill.id for skill in other_user_context.behavior], ["support.persona"]
+            )
             self.assertEqual(other_user_context.knowledge, ())
-            self.assertTrue(all(chunk.skill_id == "support.persona" for chunk in other_user_context.chunks))
+            self.assertTrue(
+                all(
+                    chunk.skill_id == "support.persona"
+                    for chunk in other_user_context.chunks
+                )
+            )
 
     def _write(self, path: Path, content: str) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)

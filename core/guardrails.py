@@ -53,7 +53,9 @@ class ToolLoopGuardrails:
             )
 
         args_key = _normalize_tool_args(tool_args)
-        if self.config.block_duplicate_call_arguments and self._seen_duplicate_call(tool_name, args_key):
+        if self.config.block_duplicate_call_arguments and self._seen_duplicate_call(
+            tool_name, args_key
+        ):
             return (
                 "This exact tool call was already tried for this turn. "
                 "Reuse the earlier result or change the inputs."
@@ -64,8 +66,12 @@ class ToolLoopGuardrails:
 
     def _record_call(self, tool_name: str, args_key: str) -> None:
         self.state.total_calls += 1
-        self.state.calls_by_tool[tool_name] = self.state.calls_by_tool.get(tool_name, 0) + 1
-        self.state.recent_calls.append(ToolCallRecord(tool_name=tool_name, args_key=args_key))
+        self.state.calls_by_tool[tool_name] = (
+            self.state.calls_by_tool.get(tool_name, 0) + 1
+        )
+        self.state.recent_calls.append(
+            ToolCallRecord(tool_name=tool_name, args_key=args_key)
+        )
         while len(self.state.recent_calls) > self.config.duplicate_call_window:
             self.state.recent_calls.popleft()
 

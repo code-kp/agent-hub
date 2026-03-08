@@ -9,7 +9,9 @@ from workspace.tools.web_tools import (
 
 
 class WebToolsTest(unittest.TestCase):
-    def test_parse_duckduckgo_results_extracts_title_snippet_and_target_url(self) -> None:
+    def test_parse_duckduckgo_results_extracts_title_snippet_and_target_url(
+        self,
+    ) -> None:
         html = """
         <html>
           <body>
@@ -51,7 +53,9 @@ class WebToolsTest(unittest.TestCase):
         self.assertIn("Useful body text.", content)
         self.assertNotIn("console.log", content)
 
-    def test_search_thinking_detail_includes_effective_query_for_time_sensitive_search(self) -> None:
+    def test_search_thinking_detail_includes_effective_query_for_time_sensitive_search(
+        self,
+    ) -> None:
         detail = _search_thinking_detail(
             original_query="latest OpenAI news",
             effective_query="latest OpenAI news March 7 2026",
@@ -61,7 +65,7 @@ class WebToolsTest(unittest.TestCase):
             },
         )
 
-        self.assertIn('latest OpenAI news March 7 2026', detail)
+        self.assertIn("latest OpenAI news March 7 2026", detail)
         self.assertIn("current information", detail)
 
     def test_fetch_page_thinking_detail_mentions_source_host(self) -> None:

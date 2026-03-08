@@ -35,8 +35,12 @@ class Agent:
     execution: contracts_execution.ExecutionConfig = field(
         default_factory=lambda: contracts_execution.DEFAULT_EXECUTION_CONFIG
     )
-    memory: contracts_memory.MemoryConfig = field(default_factory=lambda: contracts_memory.DEFAULT_MEMORY_CONFIG)
-    hooks: contracts_hooks.AgentHooks = field(default_factory=lambda: contracts_hooks.DEFAULT_AGENT_HOOKS)
+    memory: contracts_memory.MemoryConfig = field(
+        default_factory=lambda: contracts_memory.DEFAULT_MEMORY_CONFIG
+    )
+    hooks: contracts_hooks.AgentHooks = field(
+        default_factory=lambda: contracts_hooks.DEFAULT_AGENT_HOOKS
+    )
 
 
 class AgentModule:
@@ -62,7 +66,9 @@ class AgentModule:
     core_toolsets: Sequence[str] = ()
     model: Optional[str] = None
     runtime_mode: str = "direct"
-    execution: contracts_execution.ExecutionConfig = contracts_execution.DEFAULT_EXECUTION_CONFIG
+    execution: contracts_execution.ExecutionConfig = (
+        contracts_execution.DEFAULT_EXECUTION_CONFIG
+    )
     memory: contracts_memory.MemoryConfig = contracts_memory.DEFAULT_MEMORY_CONFIG
     hooks: contracts_hooks.AgentHooks = contracts_hooks.DEFAULT_AGENT_HOOKS
 
@@ -122,9 +128,17 @@ def register_agent(agent: Agent) -> Agent:
 
 def agent_from_class(agent_cls: Type[AgentModule]) -> Agent:
     if not getattr(agent_cls, "name", "").strip():
-        raise ValueError("Agent class {name} is missing a non-empty 'name'.".format(name=agent_cls.__name__))
+        raise ValueError(
+            "Agent class {name} is missing a non-empty 'name'.".format(
+                name=agent_cls.__name__
+            )
+        )
     if not getattr(agent_cls, "system_prompt", "").strip():
-        raise ValueError("Agent class {name} is missing a non-empty 'system_prompt'.".format(name=agent_cls.__name__))
+        raise ValueError(
+            "Agent class {name} is missing a non-empty 'system_prompt'.".format(
+                name=agent_cls.__name__
+            )
+        )
 
     return define_agent(
         name=agent_cls.name,
@@ -137,7 +151,9 @@ def agent_from_class(agent_cls: Type[AgentModule]) -> Agent:
         core_toolsets=getattr(agent_cls, "core_toolsets", ()),
         model=getattr(agent_cls, "model", None),
         runtime_mode=getattr(agent_cls, "runtime_mode", "direct"),
-        execution=getattr(agent_cls, "execution", contracts_execution.DEFAULT_EXECUTION_CONFIG),
+        execution=getattr(
+            agent_cls, "execution", contracts_execution.DEFAULT_EXECUTION_CONFIG
+        ),
         memory=getattr(agent_cls, "memory", contracts_memory.DEFAULT_MEMORY_CONFIG),
         hooks=getattr(agent_cls, "hooks", contracts_hooks.DEFAULT_AGENT_HOOKS),
     )

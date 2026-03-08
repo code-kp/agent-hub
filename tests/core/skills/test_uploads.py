@@ -17,7 +17,9 @@ class SkillUploadsTest(unittest.TestCase):
                 namespace="billing/policies",
             )
 
-            self.assertEqual(definition.id, "uploads.browser-user.billing.policies.refund-faq")
+            self.assertEqual(
+                definition.id, "uploads.browser-user.billing.policies.refund-faq"
+            )
             self.assertEqual(
                 definition.source,
                 "uploads/browser-user/billing/policies/refund-faq.md",

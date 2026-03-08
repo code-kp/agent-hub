@@ -8,7 +8,11 @@ from google.genai import types
 from core.contracts.agent import Agent
 from core.contracts.execution import ExecutionConfig
 from core.contracts.tools import ToolDefinition
-from core.memory.context import MemorySnapshot, format_memory_context, normalize_memory_messages
+from core.memory.context import (
+    MemorySnapshot,
+    format_memory_context,
+    normalize_memory_messages,
+)
 from core.skills.resolver import ResolvedSkillContext
 from core.skills.store import SkillChunk
 
@@ -24,7 +28,9 @@ def build_agent_instruction(
         part
         for part in [
             "Agent name: {name}".format(name=definition.name),
-            "Agent description: {description}".format(description=definition.description),
+            "Agent description: {description}".format(
+                description=definition.description
+            ),
             definition.system_prompt.strip(),
             additional_guidance.strip(),
             build_tool_planning_instruction(
@@ -37,7 +43,9 @@ def build_agent_instruction(
     )
 
 
-def normalize_conversation_history(history: Sequence[Mapping[str, Any]] | None) -> list[dict[str, str]]:
+def normalize_conversation_history(
+    history: Sequence[Mapping[str, Any]] | None,
+) -> list[dict[str, str]]:
     return [
         {"role": item.role, "text": item.text}
         for item in normalize_memory_messages(history, limit=8, max_chars=320)
@@ -57,11 +65,15 @@ def apply_runtime_context(
 
     skill_prompt = format_skill_context(resolved_context)
     memory_prompt = format_memory_context(memory_snapshot or MemorySnapshot())
-    history_prompt = "" if memory_prompt else format_conversation_history(conversation_history or [])
+    history_prompt = (
+        "" if memory_prompt else format_conversation_history(conversation_history or [])
+    )
     if not skill_prompt and not history_prompt and not memory_prompt:
         return
 
-    system_instruction = config.system_instruction or types.Content(role="system", parts=[])
+    system_instruction = config.system_instruction or types.Content(
+        role="system", parts=[]
+    )
     if not isinstance(system_instruction, types.Content):
         system_instruction = types.Content(
             role="system",
@@ -160,7 +172,9 @@ def build_tool_selection_reason(
 
     description = tool_descriptions.get(tool_name, "").strip()
     if description:
-        reason_parts.append("Tool capability: {description}".format(description=description))
+        reason_parts.append(
+            "Tool capability: {description}".format(description=description)
+        )
 
     arg_keys = sorted(str(key) for key in tool_args.keys())
     if arg_keys:
@@ -175,7 +189,8 @@ def build_tool_selection_reason(
         chunk
         for chunk in selected_chunks
         if any(
-            token in "{heading} {text}".format(
+            token
+            in "{heading} {text}".format(
                 heading=chunk.heading.lower(),
                 text=chunk.text.lower(),
             )
@@ -235,9 +250,7 @@ def format_tool_catalog_entry(tool: ToolDefinition) -> List[str]:
         lines.append("  Returns: {returns}".format(returns=tool.returns))
     if tool.follow_up_tools:
         lines.append(
-            "  Often followed by: {tools}".format(
-                tools=", ".join(tool.follow_up_tools)
-            )
+            "  Often followed by: {tools}".format(tools=", ".join(tool.follow_up_tools))
         )
     if tool.requires_current_data:
         lines.append("  Treat this as a current-data tool.")

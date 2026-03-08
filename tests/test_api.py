@@ -48,5 +48,6 @@ class AgentApiTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(events[0]["type"], "assistant_message")
 
+
 if __name__ == "__main__":
     unittest.main()

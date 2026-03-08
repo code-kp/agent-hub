@@ -25,7 +25,9 @@ class _FakeEvent:
         self.error_code = None
         self.finish_reason = None
         self.turn_complete = False
-        self.content = SimpleNamespace(parts=[SimpleNamespace(text=text)]) if text else None
+        self.content = (
+            SimpleNamespace(parts=[SimpleNamespace(text=text)]) if text else None
+        )
         self._function_calls = function_calls or []
 
     def get_function_calls(self):

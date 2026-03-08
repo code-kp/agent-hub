@@ -67,7 +67,9 @@ class MemoryManager:
         record.turn_count += 1
 
         preserve_recent_messages = max(2, self.config.preserve_recent_turns * 2)
-        summarize_after_messages = max(preserve_recent_messages + 2, self.config.summarize_after_turns * 2)
+        summarize_after_messages = max(
+            preserve_recent_messages + 2, self.config.summarize_after_turns * 2
+        )
         if len(record.recent_turns) >= summarize_after_messages:
             older_turns = record.recent_turns[:-preserve_recent_messages]
             record.recent_turns = record.recent_turns[-preserve_recent_messages:]

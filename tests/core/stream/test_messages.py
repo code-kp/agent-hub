@@ -57,11 +57,15 @@ class EventMessagesTest(unittest.TestCase):
 
     def test_tool_completed_message_summarizes_known_shapes(self) -> None:
         self.assertEqual(
-            build_tool_completed_message("search_skills", {"results": [{"id": 1}, {"id": 2}]}),
+            build_tool_completed_message(
+                "search_skills", {"results": [{"id": 1}, {"id": 2}]}
+            ),
             "search_skills finished and found 2 result(s).",
         )
         self.assertEqual(
-            build_tool_completed_message("get_current_utc_time", {"utc_time": "2026-03-07T12:00:00+00:00"}),
+            build_tool_completed_message(
+                "get_current_utc_time", {"utc_time": "2026-03-07T12:00:00+00:00"}
+            ),
             "get_current_utc_time finished. Utc time: 2026-03-07T12:00:00+00:00.",
         )
 

@@ -57,8 +57,12 @@ def summarize_value(value: Any, *, limit: int = 64) -> str:
         items = list(value)
         if not items:
             return "none"
-        if len(items) <= 3 and all(not isinstance(item, (dict, list, tuple, set)) for item in items):
-            return ", ".join(summarize_value(item, limit=20).strip('"') for item in items)
+        if len(items) <= 3 and all(
+            not isinstance(item, (dict, list, tuple, set)) for item in items
+        ):
+            return ", ".join(
+                summarize_value(item, limit=20).strip('"') for item in items
+            )
         return "{count} items".format(count=len(items))
     try:
         return compact_text(json.dumps(value, default=str), limit=limit)
@@ -145,14 +149,20 @@ def build_skill_context_message(chunks: Iterable[Any]) -> str:
 def build_tool_selection_message(tool_name: str, reason: str) -> str:
     clean_reason = ensure_sentence(reason or "")
     if clean_reason:
-        return "Choosing {tool}. {reason}".format(tool=tool_name or "the next tool", reason=clean_reason)
-    return "Choosing {tool} for the next step.".format(tool=tool_name or "the next tool")
+        return "Choosing {tool}. {reason}".format(
+            tool=tool_name or "the next tool", reason=clean_reason
+        )
+    return "Choosing {tool} for the next step.".format(
+        tool=tool_name or "the next tool"
+    )
 
 
 def build_tool_started_message(tool_name: str, args: Mapping[str, Any] | None) -> str:
     details = format_named_values(dict(args or {}), prefix="Inputs")
     if details:
-        return "Running {tool}. {details}".format(tool=tool_name or "tool", details=details)
+        return "Running {tool}. {details}".format(
+            tool=tool_name or "tool", details=details
+        )
     return "Running {tool}.".format(tool=tool_name or "tool")
 
 
@@ -181,7 +191,9 @@ def build_tool_completed_message(tool_name: str, response: Any) -> str:
             )
         details = format_named_values(dict(response), prefix="Returned")
         if details:
-            return "{tool} finished. {details}".format(tool=tool_name or "Tool", details=details)
+            return "{tool} finished. {details}".format(
+                tool=tool_name or "Tool", details=details
+            )
 
     if isinstance(response, list):
         return "{tool} finished and returned {count} item(s).".format(

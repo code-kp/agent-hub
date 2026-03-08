@@ -10,7 +10,9 @@ class WebResearchTest(unittest.TestCase):
         runtime = platform._runtimes["web.research"]
 
         self.assertEqual(runtime.definition.runtime_mode, "orchestrated")
-        self.assertEqual(runtime.definition.hooks.__class__.__name__, "WebCitationHooks")
+        self.assertEqual(
+            runtime.definition.hooks.__class__.__name__, "WebCitationHooks"
+        )
 
 
 if __name__ == "__main__":

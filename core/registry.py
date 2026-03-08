@@ -17,7 +17,9 @@ class Register:
     _items: Dict[Type[Any], Dict[str, Any]] = {}
 
     @classmethod
-    def register(cls, item_type: Type[T], name: str, item: T, overwrite: bool = True) -> T:
+    def register(
+        cls, item_type: Type[T], name: str, item: T, overwrite: bool = True
+    ) -> T:
         normalized_name = name.strip()
         if not normalized_name:
             raise ValueError("Registry name must be non-empty.")

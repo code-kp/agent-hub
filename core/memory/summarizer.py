@@ -16,7 +16,9 @@ SUMMARY_TIMEOUT_SECONDS = 15.0
 
 
 def _sanitize_agent_identifier(agent_id: str) -> str:
-    cleaned = re.sub(r"[^A-Za-z0-9_]+", "_", str(agent_id or "").strip().replace(".", "_"))
+    cleaned = re.sub(
+        r"[^A-Za-z0-9_]+", "_", str(agent_id or "").strip().replace(".", "_")
+    )
     cleaned = re.sub(r"_+", "_", cleaned).strip("_")
     if not cleaned:
         cleaned = "memory"
@@ -26,7 +28,13 @@ def _sanitize_agent_identifier(agent_id: str) -> str:
 
 
 class MemorySummarizer:
-    def __init__(self, *, agent_id: str, model_name: str, timeout_seconds: float = SUMMARY_TIMEOUT_SECONDS) -> None:
+    def __init__(
+        self,
+        *,
+        agent_id: str,
+        model_name: str,
+        timeout_seconds: float = SUMMARY_TIMEOUT_SECONDS,
+    ) -> None:
         self.agent_id = agent_id
         self.model_name = model_name
         self.timeout_seconds = timeout_seconds
@@ -41,7 +49,11 @@ class MemorySummarizer:
         if not older_turns:
             return existing_summary.strip()
         if not os.getenv("GOOGLE_API_KEY"):
-            return _fallback_summary(existing_summary=existing_summary, older_turns=older_turns, max_summary_chars=max_summary_chars)
+            return _fallback_summary(
+                existing_summary=existing_summary,
+                older_turns=older_turns,
+                max_summary_chars=max_summary_chars,
+            )
 
         session_service = InMemorySessionService()
         session_id = "memory-{value}".format(value=uuid4())
@@ -76,7 +88,14 @@ class MemorySummarizer:
                     session_id=session_id,
                     new_message=types.Content(
                         role="user",
-                        parts=[types.Part(text=_summary_message(existing_summary=existing_summary, older_turns=older_turns))],
+                        parts=[
+                            types.Part(
+                                text=_summary_message(
+                                    existing_summary=existing_summary,
+                                    older_turns=older_turns,
+                                )
+                            )
+                        ],
                     ),
                     stream_output=False,
                 ):
@@ -103,7 +122,9 @@ class MemorySummarizer:
                 max_summary_chars=max_summary_chars,
             )
         if len(summarized) > max_summary_chars:
-            summarized = "{value}...".format(value=summarized[: max_summary_chars - 3].rstrip())
+            summarized = "{value}...".format(
+                value=summarized[: max_summary_chars - 3].rstrip()
+            )
         return summarized
 
 

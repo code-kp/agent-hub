@@ -109,7 +109,9 @@ def _extract_platform_event(event: Event) -> dict[str, Any] | None:
     return None
 
 
-async def _emit_platform_event(platform_event: dict[str, Any], *, agent_id: str) -> None:
+async def _emit_platform_event(
+    platform_event: dict[str, Any], *, agent_id: str
+) -> None:
     event_type = str(platform_event.get("type") or "").strip()
     payload = dict(platform_event.get("payload") or {})
     payload.setdefault("agent_id", agent_id)

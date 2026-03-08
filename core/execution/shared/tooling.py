@@ -52,5 +52,7 @@ def build_guarded_tool_callable(
     guarded_callable.__name__ = callable_tool.__name__
     guarded_callable.__doc__ = callable_tool.__doc__
     guarded_callable.__signature__ = getattr(callable_tool, "__signature__", None)  # type: ignore[attr-defined]
-    guarded_callable.__annotations__ = dict(getattr(callable_tool, "__annotations__", {}))
+    guarded_callable.__annotations__ = dict(
+        getattr(callable_tool, "__annotations__", {})
+    )
     return guarded_callable

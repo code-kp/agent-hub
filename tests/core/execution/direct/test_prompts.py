@@ -17,14 +17,19 @@ class DirectPromptRuntimeContextTest(unittest.TestCase):
             ResolvedSkillContext(),
             conversation_history=[
                 {"role": "user", "text": "My order failed yesterday."},
-                {"role": "assistant", "text": "Which order number are you asking about?"},
+                {
+                    "role": "assistant",
+                    "text": "Which order number are you asking about?",
+                },
             ],
         )
 
         system_instruction = wrapper.config.system_instruction
         self.assertIsNotNone(system_instruction)
         self.assertIn("Recent conversation history:", system_instruction.parts[0].text)
-        self.assertIn("user: My order failed yesterday.", system_instruction.parts[0].text)
+        self.assertIn(
+            "user: My order failed yesterday.", system_instruction.parts[0].text
+        )
 
     def test_apply_runtime_context_prefers_compact_memory_when_available(self) -> None:
         llm_request = types.GenerateContentConfig()
@@ -47,7 +52,9 @@ class DirectPromptRuntimeContextTest(unittest.TestCase):
         system_instruction = wrapper.config.system_instruction
         self.assertIsNotNone(system_instruction)
         self.assertIn("Conversation memory:", system_instruction.parts[0].text)
-        self.assertNotIn("Recent conversation history:", system_instruction.parts[0].text)
+        self.assertNotIn(
+            "Recent conversation history:", system_instruction.parts[0].text
+        )
 
 
 if __name__ == "__main__":

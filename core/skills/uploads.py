@@ -48,12 +48,18 @@ def create_uploaded_skill(
         target_path /= part
     target_path = target_path / "{slug}.md".format(slug=file_slug)
 
-    resolved_title = extract_title(normalized_body) or stem.replace("_", " ").replace("-", " ").title() or "Uploaded Skill"
+    resolved_title = (
+        extract_title(normalized_body)
+        or stem.replace("_", " ").replace("-", " ").title()
+        or "Uploaded Skill"
+    )
     resolved_summary = extract_summary(normalized_body)
 
     target_path.parent.mkdir(parents=True, exist_ok=True)
     target_path.write_text(
-        _render_skill_markdown(title=resolved_title, summary=resolved_summary, body=normalized_body),
+        _render_skill_markdown(
+            title=resolved_title, summary=resolved_summary, body=normalized_body
+        ),
         encoding="utf-8",
     )
 
@@ -87,7 +93,9 @@ def _normalize_namespace(namespace: str) -> tuple[str, ...]:
     return tuple(parts)
 
 
-def normalize_uploader_id(uploader_id: str, *, fallback: str = DEFAULT_UPLOAD_USER_ID) -> str:
+def normalize_uploader_id(
+    uploader_id: str, *, fallback: str = DEFAULT_UPLOAD_USER_ID
+) -> str:
     slug = _slugify(uploader_id)
     if slug:
         return slug

@@ -73,7 +73,9 @@ class WebCitationHooksTest(unittest.TestCase):
         )
 
         self.assertIn("[5](https://example.com/5)", normalized)
-        self.assertIn("[2](https://example.com/2), [4](https://example.com/4)", normalized)
+        self.assertIn(
+            "[2](https://example.com/2), [4](https://example.com/4)", normalized
+        )
 
     def test_finalize_response_leaves_existing_markdown_links_unchanged(self) -> None:
         hooks = WebCitationHooks()

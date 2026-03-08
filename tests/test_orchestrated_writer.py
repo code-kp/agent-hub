@@ -66,7 +66,9 @@ class OrchestratedWriterTest(unittest.IsolatedAsyncioTestCase):
 def _event_text(event: Event) -> str:
     if not event.content or not event.content.parts:
         return ""
-    return "".join(part.text for part in event.content.parts if getattr(part, "text", None))
+    return "".join(
+        part.text for part in event.content.parts if getattr(part, "text", None)
+    )
 
 
 if __name__ == "__main__":

@@ -65,7 +65,9 @@ class ServerUploadTest(unittest.TestCase):
             message="user: How do I reset my billing password?\nassistant: Open the billing settings page.",
         )
 
-    def test_upload_skill_endpoint_accepts_markdown_and_returns_skill_metadata(self) -> None:
+    def test_upload_skill_endpoint_accepts_markdown_and_returns_skill_metadata(
+        self,
+    ) -> None:
         client = TestClient(server.app)
 
         with patch.object(server.service, "upload_skill_markdown") as upload_skill:
@@ -95,7 +97,9 @@ class ServerUploadTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["skill"]["id"], "uploads.browser-user.billing.refund-faq")
+        self.assertEqual(
+            payload["skill"]["id"], "uploads.browser-user.billing.refund-faq"
+        )
         self.assertEqual(payload["skill"]["class"], "knowledge")
         self.assertIn("note", payload["usage"])
 

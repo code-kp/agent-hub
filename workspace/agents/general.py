@@ -11,8 +11,6 @@ class GeneralAssistant(AgentModule):
         "Answer clearly and concisely. Use skills when relevant, avoid inventing facts, "
         "and call tools for data access when needed."
     )
-    tools = (
-        "get_current_utc_time",
-    )
+    tools = ("get_current_utc_time",)
     behavior = ("general.persona",)
     knowledge = ("general.product",)

@@ -30,7 +30,9 @@ class EventStream:
         except RuntimeError:
             self.loop = None
 
-    async def emit(self, event_type: str, payload: Optional[Dict[str, Any]] = None) -> None:
+    async def emit(
+        self, event_type: str, payload: Optional[Dict[str, Any]] = None
+    ) -> None:
         body = {
             "type": event_type,
             "timestamp": utc_timestamp(),
@@ -40,7 +42,9 @@ class EventStream:
         await self.queue.put(body)
         await asyncio.sleep(0)
 
-    def emit_nowait(self, event_type: str, payload: Optional[Dict[str, Any]] = None) -> None:
+    def emit_nowait(
+        self, event_type: str, payload: Optional[Dict[str, Any]] = None
+    ) -> None:
         body = {
             "type": event_type,
             "timestamp": utc_timestamp(),

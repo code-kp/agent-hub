@@ -10,10 +10,17 @@ class WebAnswerTest(unittest.TestCase):
         runtime = platform._runtimes["web.answer"]
 
         self.assertIn("moderately detailed answer", runtime.definition.system_prompt)
-        self.assertIn("inline citations immediately after the supported sentence", runtime.definition.system_prompt)
+        self.assertIn(
+            "inline citations immediately after the supported sentence",
+            runtime.definition.system_prompt,
+        )
         self.assertIn("[1](https://example.com)", runtime.definition.system_prompt)
-        self.assertIn("do not add a separate Sources section", runtime.definition.system_prompt)
-        self.assertEqual(runtime.definition.hooks.__class__.__name__, "WebCitationHooks")
+        self.assertIn(
+            "do not add a separate Sources section", runtime.definition.system_prompt
+        )
+        self.assertEqual(
+            runtime.definition.hooks.__class__.__name__, "WebCitationHooks"
+        )
 
 
 if __name__ == "__main__":

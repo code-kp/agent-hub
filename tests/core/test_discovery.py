@@ -69,9 +69,16 @@ class OpsBot(AgentModule):
             self.assertIn("support.triage", discovered_skills)
             self.assertIn("ops.bot", discovered)
             definition = discovered["ops.bot"].definition
-            self.assertEqual([tool.name for tool in ensure_tools(definition.tools)], ["search_skills", "shared_ping"])
-            self.assertEqual(Register.get(ToolDefinition, "shared_ping").name, "shared_ping")
-            self.assertEqual(Register.get(SkillDefinition, "support.triage").title, "Support Triage")
+            self.assertEqual(
+                [tool.name for tool in ensure_tools(definition.tools)],
+                ["search_skills", "shared_ping"],
+            )
+            self.assertEqual(
+                Register.get(ToolDefinition, "shared_ping").name, "shared_ping"
+            )
+            self.assertEqual(
+                Register.get(SkillDefinition, "support.triage").title, "Support Triage"
+            )
 
     def test_duplicate_ids_across_behavior_and_knowledge_fail(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

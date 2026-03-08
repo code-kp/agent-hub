@@ -41,7 +41,9 @@ class AgentPlatform:
 
         Register.clear(Agent)
         for item in discovered.values():
-            Register.register(Agent, item.definition.name, item.definition, overwrite=True)
+            Register.register(
+                Agent, item.definition.name, item.definition, overwrite=True
+            )
 
         records: Dict[str, AgentRecord] = {}
         for agent_id, item in discovered.items():
@@ -70,7 +72,9 @@ class AgentPlatform:
         resolved_agent = agent_id or sorted(self._records.keys())[0]
         runtime = self._runtimes.get(resolved_agent)
         if runtime is None:
-            raise KeyError("Unknown agent id: {agent_id}".format(agent_id=resolved_agent))
+            raise KeyError(
+                "Unknown agent id: {agent_id}".format(agent_id=resolved_agent)
+            )
         return resolved_agent, runtime
 
     @property
@@ -98,7 +102,9 @@ class AgentPlatform:
                     "title": item.definition.title,
                     "summary": item.definition.summary,
                 }
-                for item in sorted(discovered.values(), key=lambda value: value.skill_id)
+                for item in sorted(
+                    discovered.values(), key=lambda value: value.skill_id
+                )
             ],
         }
 

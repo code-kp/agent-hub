@@ -22,7 +22,9 @@ class AiServiceError(ValueError):
 
 
 def build_ui_agent_identifier(agent_id: str) -> str:
-    cleaned = re.sub(r"[^A-Za-z0-9_]+", "_", str(agent_id or "").strip().replace(".", "_"))
+    cleaned = re.sub(
+        r"[^A-Za-z0-9_]+", "_", str(agent_id or "").strip().replace(".", "_")
+    )
     cleaned = re.sub(r"_+", "_", cleaned).strip("_")
     if not cleaned:
         cleaned = "ui"

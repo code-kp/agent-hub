@@ -6,9 +6,11 @@ from typing import Optional
 from core.skills.store import SkillStore
 
 
-_current_skill_store: contextvars.ContextVar[Optional[SkillStore]] = contextvars.ContextVar(
-    "current_skill_store",
-    default=None,
+_current_skill_store: contextvars.ContextVar[Optional[SkillStore]] = (
+    contextvars.ContextVar(
+        "current_skill_store",
+        default=None,
+    )
 )
 
 
@@ -23,5 +25,7 @@ def reset_skill_store(token: contextvars.Token) -> None:
 def current_skill_store() -> SkillStore:
     store = _current_skill_store.get()
     if store is None:
-        raise RuntimeError("No active skill store is bound to the current runtime context.")
+        raise RuntimeError(
+            "No active skill store is bound to the current runtime context."
+        )
     return store

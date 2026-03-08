@@ -1,6 +1,10 @@
 import unittest
 
-from core.contracts.execution import DEFAULT_EXECUTION_CONFIG, ExecutionConfig, ensure_execution_config
+from core.contracts.execution import (
+    DEFAULT_EXECUTION_CONFIG,
+    ExecutionConfig,
+    ensure_execution_config,
+)
 
 
 class ExecutionContractsTest(unittest.TestCase):

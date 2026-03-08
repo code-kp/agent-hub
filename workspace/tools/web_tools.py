@@ -14,7 +14,11 @@ from urllib.parse import parse_qs, quote_plus, urlparse, unquote
 from urllib.request import Request, urlopen
 
 from core.contracts.tools import ToolModule, register_tool_class
-from workspace.tools.web_search_strategy import SearchPlan, build_search_plan, build_search_plan_detail
+from workspace.tools.web_search_strategy import (
+    SearchPlan,
+    build_search_plan,
+    build_search_plan_detail,
+)
 
 
 DEFAULT_TIMEOUT_SECONDS = 12
@@ -87,7 +91,9 @@ class _DuckDuckGoResultsParser(HTMLParser):
 @register_tool_class
 class SearchWebTool(ToolModule):
     name = "search_web"
-    description = "Search the public web for recent answers and return concise result snippets."
+    description = (
+        "Search the public web for recent answers and return concise result snippets."
+    )
     category = "public_web"
     use_when = (
         "The question depends on public information that may have changed.",
@@ -174,7 +180,9 @@ class FetchWebPageTool(ToolModule):
             step_id="fetch_web_page",
             state="done",
         )
-        self.progress.debug("Fetched web page.", title=title or "untitled", characters=len(content))
+        self.progress.debug(
+            "Fetched web page.", title=title or "untitled", characters=len(content)
+        )
         return {"url": url, "title": title, "content": content}
 
 

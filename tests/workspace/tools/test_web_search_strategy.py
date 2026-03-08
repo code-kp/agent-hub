@@ -1,7 +1,10 @@
 import unittest
 from datetime import datetime, timezone
 
-from workspace.tools.web_search_strategy import build_search_plan, build_search_plan_detail
+from workspace.tools.web_search_strategy import (
+    build_search_plan,
+    build_search_plan_detail,
+)
 
 
 class SearchPlanTest(unittest.TestCase):
@@ -24,14 +27,16 @@ class SearchPlanTest(unittest.TestCase):
         self.assertEqual(plan.effective_query, "how do refunds work")
         self.assertFalse(plan.time_sensitive)
 
-    def test_build_search_plan_detail_mentions_current_information_when_time_sensitive(self) -> None:
+    def test_build_search_plan_detail_mentions_current_information_when_time_sensitive(
+        self,
+    ) -> None:
         plan = build_search_plan(
             "latest OpenAI news",
             now=datetime(2026, 3, 7, tzinfo=timezone.utc),
         )
 
         detail = build_search_plan_detail(plan)
-        self.assertIn('latest OpenAI news March 7 2026', detail)
+        self.assertIn("latest OpenAI news March 7 2026", detail)
         self.assertIn("current information", detail)
 
 

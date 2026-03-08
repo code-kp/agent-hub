@@ -11,7 +11,9 @@ class MemoryManagerTest(unittest.IsolatedAsyncioTestCase):
         manager = MemoryManager(
             agent_id="general",
             model_name="gemini-test",
-            config=MemoryConfig(enabled=True, preserve_recent_turns=2, summarize_after_turns=3),
+            config=MemoryConfig(
+                enabled=True, preserve_recent_turns=2, summarize_after_turns=3
+            ),
         )
 
         snapshot = await manager.prepare_turn(
@@ -30,9 +32,13 @@ class MemoryManagerTest(unittest.IsolatedAsyncioTestCase):
         manager = MemoryManager(
             agent_id="general",
             model_name="gemini-test",
-            config=MemoryConfig(enabled=True, preserve_recent_turns=2, summarize_after_turns=3),
+            config=MemoryConfig(
+                enabled=True, preserve_recent_turns=2, summarize_after_turns=3
+            ),
         )
-        manager.summarizer.summarize = AsyncMock(return_value="User is fixing a failed checkout and needs next steps.")
+        manager.summarizer.summarize = AsyncMock(
+            return_value="User is fixing a failed checkout and needs next steps."
+        )
 
         await manager.prepare_turn(
             user_id="user-1",
@@ -41,7 +47,10 @@ class MemoryManagerTest(unittest.IsolatedAsyncioTestCase):
                 {"role": "user", "text": "My checkout failed."},
                 {"role": "assistant", "text": "What payment method were you using?"},
                 {"role": "user", "text": "Visa."},
-                {"role": "assistant", "text": "Try the card again after confirming the address."},
+                {
+                    "role": "assistant",
+                    "text": "Try the card again after confirming the address.",
+                },
             ],
         )
         snapshot = await manager.record_turn(

@@ -1,6 +1,10 @@
 import unittest
 
-from core.contracts.memory import DEFAULT_MEMORY_CONFIG, MemoryConfig, ensure_memory_config
+from core.contracts.memory import (
+    DEFAULT_MEMORY_CONFIG,
+    MemoryConfig,
+    ensure_memory_config,
+)
 
 
 class MemoryContractsTest(unittest.TestCase):

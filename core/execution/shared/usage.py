@@ -100,9 +100,13 @@ class UsageAggregator:
             "call_count": len(self._calls),
             "input_tokens": sum(call["input_tokens"] for call in self._calls),
             "output_tokens": sum(call["output_tokens"] for call in self._calls),
-            "tool_use_prompt_tokens": sum(call["tool_use_prompt_tokens"] for call in self._calls),
+            "tool_use_prompt_tokens": sum(
+                call["tool_use_prompt_tokens"] for call in self._calls
+            ),
             "thoughts_tokens": sum(call["thoughts_tokens"] for call in self._calls),
-            "cached_content_tokens": sum(call["cached_content_tokens"] for call in self._calls),
+            "cached_content_tokens": sum(
+                call["cached_content_tokens"] for call in self._calls
+            ),
             "total_tokens": sum(call["total_tokens"] for call in self._calls),
             "calls": [
                 {

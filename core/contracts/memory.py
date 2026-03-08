@@ -32,7 +32,11 @@ class MemoryConfig:
         ):
             value = int(getattr(self, field_name))
             if value <= 0:
-                raise ValueError("{field_name} must be greater than zero.".format(field_name=field_name))
+                raise ValueError(
+                    "{field_name} must be greater than zero.".format(
+                        field_name=field_name
+                    )
+                )
 
 
 DEFAULT_MEMORY_CONFIG = MemoryConfig()

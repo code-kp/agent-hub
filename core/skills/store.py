@@ -30,7 +30,9 @@ class SkillChunk:
 
     @property
     def label(self) -> str:
-        return "{skill_id} :: {heading}".format(skill_id=self.skill_id, heading=self.heading)
+        return "{skill_id} :: {heading}".format(
+            skill_id=self.skill_id, heading=self.heading
+        )
 
 
 class SkillStore:
@@ -63,7 +65,11 @@ class SkillStore:
         for path in files:
             definition = parse_skill_file(path, self.skills_dir)
             if definition.id in skills:
-                raise ValueError("Duplicate skill id discovered: {skill_id}".format(skill_id=definition.id))
+                raise ValueError(
+                    "Duplicate skill id discovered: {skill_id}".format(
+                        skill_id=definition.id
+                    )
+                )
             skills[definition.id] = definition
             chunks.extend(self._chunk_skill(definition))
 
@@ -113,7 +119,9 @@ class SkillStore:
     ) -> List[SkillChunk]:
         self.refresh()
         query_tokens = self._tokenize(query)
-        selected_ids = {value.strip() for value in list(skill_ids or []) if str(value or "").strip()}
+        selected_ids = {
+            value.strip() for value in list(skill_ids or []) if str(value or "").strip()
+        }
         chunk_pool = [
             chunk
             for chunk in self._chunks
@@ -121,7 +129,9 @@ class SkillStore:
         ]
 
         if not query_tokens:
-            return self._take_first_chunks(chunk_pool, max_chunks=max_chunks, max_chars=max_chars)
+            return self._take_first_chunks(
+                chunk_pool, max_chunks=max_chunks, max_chars=max_chars
+            )
 
         scored: List[tuple[float, SkillChunk]] = []
         query_counter = Counter(query_tokens)
@@ -138,15 +148,25 @@ class SkillStore:
                 idf = math.log((1 + corpus_size) / (1 + doc_freq)) + 1
                 overlap_score += min(query_count, chunk_counter[token]) * idf
 
-            heading_bonus = 1.5 if any(token in chunk.heading.lower() for token in query_tokens) else 0.0
-            file_bonus = 1.0 if any(token in chunk.source.lower() for token in query_tokens) else 0.0
+            heading_bonus = (
+                1.5
+                if any(token in chunk.heading.lower() for token in query_tokens)
+                else 0.0
+            )
+            file_bonus = (
+                1.0
+                if any(token in chunk.source.lower() for token in query_tokens)
+                else 0.0
+            )
             phrase_bonus = 2.0 if query_text in chunk.text.lower() else 0.0
             score = overlap_score + heading_bonus + file_bonus + phrase_bonus
             if score > 0:
                 scored.append((score, chunk))
 
         scored.sort(key=lambda item: item[0], reverse=True)
-        return self._take_scored_chunks(scored, max_chunks=max_chunks, max_chars=max_chars)
+        return self._take_scored_chunks(
+            scored, max_chunks=max_chunks, max_chars=max_chars
+        )
 
     def search(
         self,
@@ -200,7 +220,9 @@ class SkillStore:
                 chunk_index += 1
                 chunks.append(
                     SkillChunk(
-                        chunk_id="{skill_id}:{idx}".format(skill_id=definition.id, idx=chunk_index),
+                        chunk_id="{skill_id}:{idx}".format(
+                            skill_id=definition.id, idx=chunk_index
+                        ),
                         skill_id=definition.id,
                         source=definition.source,
                         heading=heading,
@@ -287,7 +309,9 @@ class SkillStore:
             sentence = sentence.strip()
             if not sentence:
                 continue
-            candidate = "{current} {sentence}".format(current=current, sentence=sentence).strip()
+            candidate = "{current} {sentence}".format(
+                current=current, sentence=sentence
+            ).strip()
             if current and len(candidate) > self.max_chunk_chars:
                 parts.append(current)
                 current = sentence

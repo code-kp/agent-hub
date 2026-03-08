@@ -44,10 +44,22 @@ class AiServiceTest(unittest.IsolatedAsyncioTestCase):
             yield event
 
         with mock.patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}, clear=False):
-            with mock.patch("services.ai.service.shared_adk.create_llm_agent", return_value=mock.Mock()) as create_agent:
-                with mock.patch("services.ai.service.shared_adk.create_runner", return_value=mock.Mock()) as create_runner:
-                    with mock.patch("services.ai.service.shared_adk.stream_runner_events", return_value=fake_events()):
-                        with mock.patch("services.ai.service.shared_adk.extract_text", return_value="Billing Password Reset"):
+            with mock.patch(
+                "services.ai.service.shared_adk.create_llm_agent",
+                return_value=mock.Mock(),
+            ) as create_agent:
+                with mock.patch(
+                    "services.ai.service.shared_adk.create_runner",
+                    return_value=mock.Mock(),
+                ) as create_runner:
+                    with mock.patch(
+                        "services.ai.service.shared_adk.stream_runner_events",
+                        return_value=fake_events(),
+                    ):
+                        with mock.patch(
+                            "services.ai.service.shared_adk.extract_text",
+                            return_value="Billing Password Reset",
+                        ):
                             result = await service.generate_text(
                                 agent_id="general",
                                 instructions="Generate a title.",

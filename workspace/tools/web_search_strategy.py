@@ -53,7 +53,9 @@ def build_search_plan(
     time_sensitive = query_needs_current_date_context(normalized_query)
     effective_query = normalized_query
     if time_sensitive and normalized_query:
-        effective_query = "{query} {date}".format(query=normalized_query, date=current_date_label).strip()
+        effective_query = "{query} {date}".format(
+            query=normalized_query, date=current_date_label
+        ).strip()
 
     queries: list[str] = []
     add_query(queries, effective_query)
@@ -85,7 +87,9 @@ def build_search_plan_detail(plan: SearchPlan) -> str:
         return 'Searching for "{query}" so the results stay anchored to current information.'.format(
             query=plan.effective_query,
         )
-    return 'Searching for "{query}" on the public web.'.format(query=plan.effective_query)
+    return 'Searching for "{query}" on the public web.'.format(
+        query=plan.effective_query
+    )
 
 
 def query_needs_current_date_context(query: str) -> bool:

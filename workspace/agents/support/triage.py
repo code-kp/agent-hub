@@ -11,8 +11,6 @@ class SupportTriage(AgentModule):
         "When troubleshooting, separate confirmed facts from assumptions, suggest concrete "
         "next checks, and keep answers operational."
     )
-    tools = (
-        "get_current_utc_time",
-    )
+    tools = ("get_current_utc_time",)
     behavior = ("support.persona", "support.policy")
     knowledge = ("support.triage", "general.product")

@@ -65,7 +65,9 @@ async def stream_chat(payload: ChatRequest) -> StreamingResponse:
             message=payload.message,
             user_id=payload.user_id,
             session_id=payload.session_id,
-            history=[item.model_dump() for item in payload.history] if payload.history else None,
+            history=[item.model_dump() for item in payload.history]
+            if payload.history
+            else None,
             stream=payload.stream,
         )
     except KeyError as exc:
@@ -109,15 +111,21 @@ async def upload_skill(
 ) -> JSONResponse:
     file_name = (file.filename or "").strip()
     if not file_name:
-        raise HTTPException(status_code=400, detail="Uploaded file is missing a filename.")
+        raise HTTPException(
+            status_code=400, detail="Uploaded file is missing a filename."
+        )
     if not file_name.lower().endswith(".md"):
-        raise HTTPException(status_code=400, detail="Only markdown (.md) files are supported.")
+        raise HTTPException(
+            status_code=400, detail="Only markdown (.md) files are supported."
+        )
 
     raw_content = await file.read()
     try:
         content = raw_content.decode("utf-8")
     except UnicodeDecodeError as exc:
-        raise HTTPException(status_code=400, detail="Uploaded markdown must be valid UTF-8.") from exc
+        raise HTTPException(
+            status_code=400, detail="Uploaded markdown must be valid UTF-8."
+        ) from exc
 
     try:
         uploaded = service.upload_skill_markdown(

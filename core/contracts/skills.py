@@ -53,7 +53,9 @@ def ensure_skill_ids(skill_ids: Optional[Sequence[str]]) -> tuple[str, ...]:
     return tuple(values)
 
 
-def register_skill(skill_definition: SkillDefinition, *, name: Optional[str] = None) -> SkillDefinition:
+def register_skill(
+    skill_definition: SkillDefinition, *, name: Optional[str] = None
+) -> SkillDefinition:
     register_name = normalize_skill_id(name or skill_definition.id)
     if not register_name:
         raise ValueError("Skill id must be non-empty.")
@@ -61,7 +63,9 @@ def register_skill(skill_definition: SkillDefinition, *, name: Optional[str] = N
     return skill_definition
 
 
-def register_skills(skill_definitions: Iterable[SkillDefinition]) -> List[SkillDefinition]:
+def register_skills(
+    skill_definitions: Iterable[SkillDefinition],
+) -> List[SkillDefinition]:
     registered: List[SkillDefinition] = []
     for item in skill_definitions:
         registered.append(register_skill(item))

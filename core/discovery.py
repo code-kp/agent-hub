@@ -33,7 +33,9 @@ def _slugify(value: str) -> str:
 
 
 def _agent_fingerprint(definition: Agent) -> str:
-    tool_markers = ",".join(sorted(_tool_fingerprint(tool) for tool in ensure_tools(definition.tools)))
+    tool_markers = ",".join(
+        sorted(_tool_fingerprint(tool) for tool in ensure_tools(definition.tools))
+    )
     return "|".join(
         [
             definition.name,
@@ -50,7 +52,9 @@ def _agent_fingerprint(definition: Agent) -> str:
 def _tool_fingerprint(tool: ToolDefinition) -> str:
     handler = tool.handler
     handler_module = getattr(handler, "__module__", "")
-    handler_name = getattr(handler, "__qualname__", getattr(handler, "__name__", "handler"))
+    handler_name = getattr(
+        handler, "__qualname__", getattr(handler, "__name__", "handler")
+    )
     source = ""
     try:
         source = inspect.getsource(handler)
@@ -95,7 +99,9 @@ class DiscoveredSkill:
 class DiscoveryService:
     """Discover tool and agent modules from the shared workspace at runtime."""
 
-    def __init__(self, workspace_root: Path, workspace_package: str = "workspace") -> None:
+    def __init__(
+        self, workspace_root: Path, workspace_package: str = "workspace"
+    ) -> None:
         self.workspace_root = workspace_root
         self.workspace_package = workspace_package
 
@@ -111,14 +117,20 @@ class DiscoveryService:
                 continue
 
             base_agent_id = agent_namespace or "index"
-            namespace_root = base_agent_id.split(".", 1)[0] if base_agent_id else "workspace"
+            namespace_root = (
+                base_agent_id.split(".", 1)[0] if base_agent_id else "workspace"
+            )
 
             for index, definition in enumerate(definitions):
                 agent_id = base_agent_id
                 if len(definitions) > 1:
-                    agent_id = "{base}.{slug}".format(base=base_agent_id, slug=_slugify(definition.name))
+                    agent_id = "{base}.{slug}".format(
+                        base=base_agent_id, slug=_slugify(definition.name)
+                    )
                     if index > 0 and agent_id in discovered:
-                        agent_id = "{base}-{index}".format(base=agent_id, index=index + 1)
+                        agent_id = "{base}-{index}".format(
+                            base=agent_id, index=index + 1
+                        )
 
                 if agent_id in discovered:
                     raise RuntimeError(
@@ -255,7 +267,9 @@ class DiscoveryService:
 
 
 def _skill_fingerprint(definition: SkillDefinition) -> str:
-    digest = hashlib.sha1(definition.body.encode("utf-8"), usedforsecurity=False).hexdigest()
+    digest = hashlib.sha1(
+        definition.body.encode("utf-8"), usedforsecurity=False
+    ).hexdigest()
     return "|".join(
         [
             definition.id,
