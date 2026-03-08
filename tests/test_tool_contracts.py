@@ -2,7 +2,7 @@ import contextvars
 import unittest
 import inspect
 
-from core.contracts.agent import define_agent
+from core.contracts.agent import OrchestratedAgentModule, agent_from_class, define_agent
 from core.contracts.execution import ExecutionConfig
 from core.contracts.tools import (
     ToolModule,
@@ -13,7 +13,7 @@ from core.contracts.tools import (
     tool_reference_name,
 )
 from core.registry import Register
-import core.runtime.tooling as runtime_tooling
+import core.execution.shared.tooling as runtime_tooling
 
 
 @register_tool_class
@@ -108,11 +108,23 @@ class ToolContractsTest(unittest.TestCase):
             description="Uses explicit limits.",
             system_prompt="Answer clearly.",
             tools=("explicit_ping",),
-            execution=ExecutionConfig(max_tool_calls=4, max_calls_per_tool=2),
+            execution=ExecutionConfig(max_tool_calls=4, max_calls_per_tool=2, max_replans=2),
         )
 
         self.assertEqual(agent.execution.max_tool_calls, 4)
         self.assertEqual(agent.execution.max_calls_per_tool, 2)
+        self.assertEqual(agent.execution.max_replans, 2)
+
+    def test_orchestrated_agent_class_sets_orchestrated_runtime_mode(self) -> None:
+        class OrchestratedExample(OrchestratedAgentModule):
+            name = "Orchestrated Example"
+            description = "Runs the explicit controller loop."
+            system_prompt = "Answer clearly."
+            tools = ("explicit_ping",)
+
+        definition = agent_from_class(OrchestratedExample)
+
+        self.assertEqual(definition.runtime_mode, "orchestrated")
 
 
 if __name__ == "__main__":

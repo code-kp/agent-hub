@@ -17,6 +17,7 @@ def build_agent_instruction(
     definition: Agent,
     tool_definitions: Sequence[ToolDefinition],
     execution: ExecutionConfig,
+    additional_guidance: str = "",
 ) -> str:
     return "\n\n".join(
         part
@@ -24,6 +25,7 @@ def build_agent_instruction(
             "Agent name: {name}".format(name=definition.name),
             "Agent description: {description}".format(description=definition.description),
             definition.system_prompt.strip(),
+            additional_guidance.strip(),
             build_tool_planning_instruction(
                 tool_definitions=tool_definitions,
                 execution=execution,

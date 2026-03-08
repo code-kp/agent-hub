@@ -1,9 +1,20 @@
-from core.contracts.agent import Agent, AgentModule, register_agent_class
+from core.contracts.agent import (
+    Agent,
+    AgentModule,
+    OrchestratedAgentModule,
+    VALID_RUNTIME_MODES,
+    register_agent_class,
+    register_orchestrated_agent_class,
+)
 from core.contracts.execution import (
     DEFAULT_EXECUTION_CONFIG,
     ExecutionConfig,
-    VALID_TOOL_PLANNERS,
     ensure_execution_config,
+)
+from core.contracts.hooks import (
+    AgentHooks,
+    DEFAULT_AGENT_HOOKS,
+    ensure_agent_hooks,
 )
 from core.contracts.skills import (
     VALID_SKILL_MODES,
@@ -37,7 +48,10 @@ from core.contracts.tools import (
 
 __all__ = [
     "Agent",
+    "AgentHooks",
     "AgentModule",
+    "OrchestratedAgentModule",
+    "DEFAULT_AGENT_HOOKS",
     "DEFAULT_CORE_TOOLSET",
     "DEFAULT_CORE_TOOLSETS",
     "DEFAULT_EXECUTION_CONFIG",
@@ -46,7 +60,7 @@ __all__ = [
     "SkillDefinition",
     "ToolDefinition",
     "ToolModule",
-    "VALID_TOOL_PLANNERS",
+    "VALID_RUNTIME_MODES",
     "VALID_SKILL_MODES",
     "VALID_SKILL_TYPES",
     "build_adk_tools",
@@ -55,10 +69,12 @@ __all__ = [
     "ensure_skill_ids",
     "ensure_skill_scopes",
     "ensure_execution_config",
+    "ensure_agent_hooks",
     "ensure_tools",
     "ensure_tool_references",
     "get_core_toolset",
     "register_agent_class",
+    "register_orchestrated_agent_class",
     "register_core_toolset",
     "register_skill",
     "register_tool",

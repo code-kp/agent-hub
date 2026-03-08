@@ -7,9 +7,9 @@ from dotenv import load_dotenv
 
 from core.discovery import DiscoveryService
 from core.contracts.agent import Agent
+from core.execution import AgentRecord, create_agent_runtime
 from core.contracts.skills import SkillDefinition
 from core.registry import Register
-from core.runtime import AgentRecord, AgentRuntime
 from core.skills.uploads import create_uploaded_skill
 
 
@@ -21,7 +21,7 @@ class AgentPlatform:
         load_dotenv(self.workspace_root.parent / ".env")
         self.discovery = DiscoveryService(self.workspace_root)
         self._records: Dict[str, AgentRecord] = {}
-        self._runtimes: Dict[str, AgentRuntime] = {}
+        self._runtimes: Dict[str, Any] = {}
         self.refresh()
 
     def refresh(self) -> None:
@@ -56,7 +56,7 @@ class AgentPlatform:
         for agent_id, record in records.items():
             previous = self._records.get(agent_id)
             if previous != record or agent_id not in self._runtimes:
-                self._runtimes[agent_id] = AgentRuntime(record)
+                self._runtimes[agent_id] = create_agent_runtime(record)
 
         self._records = records
 

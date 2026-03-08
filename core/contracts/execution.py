@@ -3,38 +3,31 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
-VALID_TOOL_PLANNERS = ("model",)
-
-
 @dataclass(frozen=True)
 class ExecutionConfig:
     """
-    Runtime execution decisions that stay deterministic even when tool planning is model-driven.
+    Runtime execution decisions that stay deterministic while tool planning remains model-driven.
 
     The framework should decide limits and safety constraints, not user-intent routing.
     """
 
-    tool_planner: str = "model"
     max_tool_calls: int = 8
     max_calls_per_tool: int = 3
     max_consecutive_calls_per_tool: int = 2
     block_duplicate_call_arguments: bool = True
     duplicate_call_window: int = 4
+    max_replans: int = 3
+    max_verification_rounds: int = 2
     include_tool_catalog: bool = True
 
     def __post_init__(self) -> None:
-        if self.tool_planner not in VALID_TOOL_PLANNERS:
-            raise ValueError(
-                "Unsupported tool planner: {value}. Expected one of: {allowed}.".format(
-                    value=self.tool_planner,
-                    allowed=", ".join(VALID_TOOL_PLANNERS),
-                )
-            )
         for field_name in (
             "max_tool_calls",
             "max_calls_per_tool",
             "max_consecutive_calls_per_tool",
             "duplicate_call_window",
+            "max_replans",
+            "max_verification_rounds",
         ):
             value = int(getattr(self, field_name))
             if value <= 0:
@@ -50,4 +43,3 @@ def ensure_execution_config(value: ExecutionConfig | None) -> ExecutionConfig:
     if not isinstance(value, ExecutionConfig):
         raise TypeError("execution must be an ExecutionConfig instance.")
     return value
-

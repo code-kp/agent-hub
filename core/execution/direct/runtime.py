@@ -12,13 +12,14 @@ from google.genai import types
 
 import core.contracts.agent as contracts_agent
 import core.contracts.execution as contracts_execution
+import core.contracts.hooks as contracts_hooks
 import core.contracts.tools as contracts_tools
 import core.guardrails as guardrails_module
 import core.registry as registry
-import core.runtime.adk as runtime_adk
-import core.runtime.prompts as runtime_prompts
-import core.runtime.tooling as runtime_tooling
-import core.runtime.types as runtime_types
+import core.execution.shared.adk as runtime_adk
+import core.execution.direct.prompts as runtime_prompts
+import core.execution.shared.tooling as runtime_tooling
+import core.execution.shared.types as runtime_types
 import core.skills.context as skills_context
 import core.skills.resolver as skills_resolver
 import core.skills.store as skills_store
@@ -30,11 +31,12 @@ DEFAULT_MODEL = "gemini-2.0-flash"
 DEFAULT_MODEL_TIMEOUT_SECONDS = 60.0
 
 
-class AgentRuntime:
+class DirectAgentRuntime:
     def __init__(self, record: runtime_types.AgentRecord) -> None:
         self.record = record
         self.definition = registry.Register.get(contracts_agent.Agent, record.agent_name)
         self.execution: contracts_execution.ExecutionConfig = self.definition.execution
+        self.hooks: contracts_hooks.AgentHooks = self.definition.hooks
         self.model_name, self._model_source = self._resolve_model_name()
         self.model_timeout_seconds = self._resolve_model_timeout_seconds()
         self._resolved_tools = contracts_tools.ensure_tools(self.definition.tools)
@@ -99,6 +101,7 @@ class AgentRuntime:
             definition=self.definition,
             tool_definitions=tuple(self._tool_definitions.values()),
             execution=self.execution,
+            additional_guidance=self.hooks.build_prompt_guidance(phase="direct", state={}),
         )
         return runtime_adk.create_llm_agent(
             agent_id=self.record.agent_id,
@@ -242,6 +245,12 @@ class AgentRuntime:
         tool_guardrails_token: Optional[contextvars.Token] = None
         skill_store_token: Optional[contextvars.Token] = None
         assistant_buffer = ""
+        hook_state = self.hooks.create_turn_state(
+            agent_id=self.record.agent_id,
+            user_id=user_id,
+            session_id=session_id,
+            message=message,
+        )
 
         try:
             skill_store_token = skills_context.bind_skill_store(self.skill_store)
@@ -272,6 +281,7 @@ class AgentRuntime:
                 user_id=user_id,
                 session_id=session_id,
                 resolved_context=resolved_context,
+                hook_state=hook_state,
             )
             await stream.emit(
                 "run_completed",
@@ -375,6 +385,7 @@ class AgentRuntime:
         user_id: str,
         session_id: str,
         resolved_context: skills_resolver.ResolvedSkillContext,
+        hook_state: contracts_hooks.HookState,
     ) -> str:
         await stream.emit(
             "model_started",
@@ -419,6 +430,7 @@ class AgentRuntime:
                         message=message,
                         resolved_context=resolved_context,
                         assistant_buffer=assistant_buffer,
+                        hook_state=hook_state,
                     )
         finally:
             heartbeat_task.cancel()
@@ -435,6 +447,7 @@ class AgentRuntime:
         message: str,
         resolved_context: skills_resolver.ResolvedSkillContext,
         assistant_buffer: str,
+        hook_state: contracts_hooks.HookState,
     ) -> str:
         text = runtime_adk.extract_text(event)
         function_calls = list(event.get_function_calls() or [])
@@ -446,7 +459,10 @@ class AgentRuntime:
             resolved_context=resolved_context,
             model_hint=text,
         )
-        await self._emit_tool_response_events(function_responses=function_responses)
+        await self._emit_tool_response_events(
+            function_responses=function_responses,
+            hook_state=hook_state,
+        )
 
         if getattr(event, "partial", False) and text:
             assistant_buffer += text
@@ -468,6 +484,7 @@ class AgentRuntime:
 
         if event.is_final_response() and (text or assistant_buffer):
             final_text = "{buffer}{tail}".format(buffer=assistant_buffer, tail=text).strip()
+            final_text = self.hooks.finalize_response(text=final_text, state=hook_state)
             await stream_progress.emit_thinking_step(
                 step_id="answer",
                 label="Answer ready",
@@ -529,8 +546,15 @@ class AgentRuntime:
         self,
         *,
         function_responses: list[Any],
+        hook_state: Optional[contracts_hooks.HookState] = None,
     ) -> None:
         for response in function_responses:
+            if hook_state is not None:
+                self.hooks.on_tool_response(
+                    state=hook_state,
+                    tool_name=response.name,
+                    payload=response.response,
+                )
             await stream_progress.emit_debug_event(
                 "tool_completed",
                 agent_id=self.record.agent_id,

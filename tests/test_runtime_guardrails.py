@@ -10,7 +10,7 @@ from core.contracts.agent import Agent
 from core.contracts.execution import DEFAULT_EXECUTION_CONFIG
 from core.stream.progress import EventStream
 from core.skills.resolver import ResolvedSkillContext
-from core.runtime import AgentRecord, AgentRuntime
+from core.execution import AgentRecord, DirectAgentRuntime
 
 
 class _NeverRespondingRunner:
@@ -93,8 +93,8 @@ class RuntimeGuardrailsTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("env-model", error_event["message"])
         self.assertIn("gemini-2.0-flash", error_event["message"])
 
-    def _build_runtime(self) -> AgentRuntime:
-        runtime = object.__new__(AgentRuntime)
+    def _build_runtime(self) -> DirectAgentRuntime:
+        runtime = object.__new__(DirectAgentRuntime)
         runtime.record = AgentRecord(
             agent_id="general",
             module_name="workspace.agents.general",
@@ -130,6 +130,7 @@ class RuntimeGuardrailsTest(unittest.IsolatedAsyncioTestCase):
         runtime._session_service = object()
         runtime._session_keys = set()
         runtime.execution = DEFAULT_EXECUTION_CONFIG
+        runtime.hooks = runtime.definition.hooks
         runtime.agent = object()
         runtime.runner = _NeverRespondingRunner()
         runtime.ensure_session = AsyncMock(return_value=None)
