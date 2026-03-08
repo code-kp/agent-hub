@@ -214,16 +214,14 @@ Examples:
 
 ### Put it in skills if it is:
 
-- reusable domain knowledge
-- policy
-- workflow
-- persona instructions shared across agents
+- behavior guidance that should always shape the agent
+- reusable domain knowledge that should be retrieved when relevant
+- a workflow or operating procedure that belongs in `knowledge`
+- persona instructions or response boundaries shared across agents
 
 Examples:
-- refund policy
-- incident triage workflow
-- support response boundaries
-- agent persona
+- `behavior`: support response boundaries, agent persona
+- `knowledge`: refund policy, incident triage workflow
 
 ### Put it in framework guardrails if it is:
 
