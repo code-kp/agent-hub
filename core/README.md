@@ -19,6 +19,9 @@ Author-facing definitions.
 - `hooks.py`
   - Defines `AgentHooks`
   - This is the runtime extension point for agent-specific prompt guidance, per-turn state, and final response shaping
+- `memory.py`
+  - Defines `MemoryConfig`
+  - This controls whether an agent uses compact rolling memory
 - `tools.py`
   - Defines `ToolDefinition`, `ToolModule`, `register_tool_class()`, and `ProgressUpdater`
   - This is the main API for defining tools
@@ -46,12 +49,14 @@ Rule:
 Skill ingestion and retrieval.
 
 - `parser.py`
-  - Parses markdown skill files and frontmatter into `SkillDefinition`
+  - Parses markdown skill files into `SkillDefinition`
+  - Uses folder-based `behavior` / `knowledge` classification
+  - Still accepts frontmatter for compatibility
 - `store.py`
   - Maintains the in-memory skill catalog and chunk index
 - `resolver.py`
   - Resolves which skills should be included for a request
-  - Applies scopes, always-on rules, lexical scoring, and chunk selection
+  - Applies always-on behavior skill loading, knowledge retrieval, lexical scoring, and chunk selection
 - `uploads.py`
   - Writes uploaded markdown files into the workspace skill tree
 
@@ -128,6 +133,19 @@ Per-agent execution package.
 - `factory.py`
   - Picks the right execution runtime for each agent definition
 
+### `core/memory/`
+
+Conversation-memory compaction.
+
+- `context.py`
+  - Defines normalized memory messages and the prompt-ready memory snapshot
+- `store.py`
+  - Maintains rolling per-session memory state
+- `summarizer.py`
+  - Uses ADK to compress older turns into a compact summary
+- `manager.py`
+  - Handles seeding, summarization, and recent-turn retention
+
 Responsibilities:
 - build the ADK agent
 - resolve skills per request
@@ -157,9 +175,10 @@ Examples:
 3. `core/execution/direct/runtime.py` or `core/execution/orchestrated/runtime.py` receives a user message
 4. `core/skills/resolver.py` picks relevant skill summaries and excerpts
 5. `core/execution/direct/prompts.py` or `core/execution/orchestrated/prompts.py` injects that context and gives the model the available tool catalog
-6. the ADK agent decides whether tools are needed and may chain them iteratively
-7. `core/guardrails.py` enforces framework limits during tool execution
-8. `core/stream/progress.py` emits live events to the UI
+6. `core/memory/manager.py` injects compact memory when the agent enables it
+7. the ADK agent decides whether tools are needed and may chain them iteratively
+8. `core/guardrails.py` enforces framework limits during tool execution
+9. `core/stream/progress.py` emits live events to the UI
 
 ## Where Logic Should Live
 
@@ -227,8 +246,9 @@ Recommended:
 - use `OrchestratedAgentModule` when you want the framework to run an explicit `plan -> execute -> replan -> verify` loop
 - keep the system prompt focused on behavior, not retrieval plumbing
 - list only explicit tools by name
-- use `skill_scopes` to declare what knowledge the agent is allowed to use
-- use `always_on_skills` only for small, stable skills
+- use `behavior` for always-on behavior shaping
+- use `knowledge` for retrievable reference material
+- use `memory` when you want compact follow-up context without replaying the full transcript
 - let the model plan tool usage; use `ExecutionConfig` only for tool-loop limits and guardrails
 - use `hooks` when one agent family needs custom prompt guidance or final response shaping that should not live in `core`
 
@@ -237,6 +257,7 @@ Example:
 ```python
 from core.contracts.agent import AgentModule, register_agent_class
 from core.contracts.execution import ExecutionConfig
+from core.contracts.memory import MemoryConfig
 
 
 @register_agent_class
@@ -252,17 +273,22 @@ class SupportTriage(AgentModule):
         "search_web",
         "fetch_web_page",
     )
-    skill_scopes = (
-        "support.*",
-        "general.*",
-    )
-    always_on_skills = (
+    behavior = (
         "support.persona",
         "support.policy",
+    )
+    knowledge = (
+        "support.triage",
+        "general.product",
     )
     execution = ExecutionConfig(
         max_tool_calls=6,
         max_calls_per_tool=2,
+    )
+    memory = MemoryConfig(
+        enabled=True,
+        preserve_recent_turns=4,
+        summarize_after_turns=6,
     )
 ```
 
@@ -285,7 +311,7 @@ class WebAnswer(AgentModule):
 Do not:
 - hardcode file paths into agent definitions
 - put large domain knowledge directly in the system prompt
-- use one giant `always_on` skill for everything
+- use one giant behavior skill for everything
 
 Implicit framework tools:
 - `search_skills` is included through the default core toolset
@@ -295,6 +321,7 @@ Implicit framework tools:
 Agent interfaces:
 - `AgentModule`: direct ADK agent runtime; the model decides tool calls directly
 - `OrchestratedAgentModule`: ADK custom-controller runtime; the framework runs planner, executor, replanner, and verifier sub-agents for you
+- `MemoryConfig`: compact rolling memory; the framework keeps a summary plus a few recent turns instead of replaying the full transcript
 
 Orchestrated example:
 
@@ -367,25 +394,16 @@ Do not:
 
 Recommended:
 - keep one skill focused on one concern
-- use frontmatter consistently
-- use `persona` for behavior-shaping guidance
-- use `policy` for constraints and rules
-- use `workflow` for step-by-step operating procedures
-- use `knowledge` for facts, guides, docs, references
+- put it under either `workspace/skills/behavior/...` or `workspace/skills/knowledge/...`
+- use a heading and normal markdown content
+- let the framework infer the title from the first heading or file name
+- let the framework infer the summary from the first paragraph
+- keep `behavior` skills short and stable
+- keep `knowledge` skills focused enough for precise retrieval
 
 Example:
 
 ```md
----
-title: Support Response Policy
-type: policy
-summary: Boundaries and priorities for support conversations.
-tags: [support, policy]
-triggers: [incident, outage, production, urgent]
-mode: always_on
-priority: 90
----
-
 # Support Response Policy
 
 - Lead with mitigation when production is affected.
@@ -393,18 +411,40 @@ priority: 90
 - Do not invent incident status.
 ```
 
-Use `mode` like this:
-- `always_on`
-  - small, stable instructions that should usually be present
-- `auto`
-  - normal retrievable skills selected per request
-- `manual`
-  - only use when explicitly selected by a tool or future UI flow
+Folder meaning:
+- `behavior`
+  - always-on behavior shaping
+  - examples: persona, response boundaries, tone guidance
+- `knowledge`
+  - retrievable reference material
+  - examples: product docs, workflows, FAQs, policies, release notes
+
+Inside `behavior`, the common sub-patterns are:
+- `persona`
+  - how the agent should sound and behave
+  - examples: concise replies, operational tone, low speculation
+- `policy`
+  - rules and boundaries the agent should follow
+  - examples: do not invent status, separate facts from assumptions, require verification before commitments
+
+Public ids come from the path after `behavior/` or `knowledge/`:
+- `workspace/skills/behavior/support/policy.md` -> `support.policy`
+- `workspace/skills/knowledge/support/triage.md` -> `support.triage`
+
+Agent definitions should list exact ids:
+- `behavior = ("support.persona", "support.policy")`
+- `knowledge = ("support.triage", "general.product")`
 
 Do not:
-- combine persona, policy, workflow, and product docs into one large markdown file
-- use long summaries
-- rely on folder names alone without frontmatter quality
+- combine behavior guidance and large reference material into one large markdown file
+- put unrelated support knowledge into one huge document
+- require contributors to author retrieval metadata before they can add a useful skill
+
+Compatibility note:
+- frontmatter still loads if it already exists
+- legacy `skill_scopes`, `always_on_skills`, and `skills_dir` still work during migration
+- `behavior_skills` and `knowledge_skills` still work during migration
+- new examples should use `behavior` and `knowledge`
 
 ## Design Principle
 
@@ -413,7 +453,7 @@ Keep the architecture layered:
 - `contracts`: what contributors write
 - `skills`: what the platform retrieves
 - `stream`: what the UI sees
-- `policies`: what the platform guarantees
-- `runtime`: what executes the full loop
+- `guardrails`: what the platform guarantees deterministically
+- `execution`: what executes the full loop
 
 If a change makes those boundaries blur, it will make the platform harder to maintain.

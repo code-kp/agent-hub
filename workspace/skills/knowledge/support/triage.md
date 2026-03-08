@@ -1,13 +1,3 @@
----
-title: Support Triage Workflow
-type: workflow
-summary: First-response and escalation workflow for operational support conversations.
-tags: [support, triage, troubleshooting, escalation]
-triggers: [issue, bug, problem, production, escalation, troubleshoot]
-mode: auto
-priority: 85
----
-
 # Support Triage
 
 ## First Response

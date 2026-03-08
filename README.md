@@ -5,7 +5,7 @@ Framework-style platform for creating and running custom agents with:
 - strict separation of `core/` platform runtime and `workspace/` creator content
 - one shared workspace for agents, tools, and skills
 - class-based agent authoring API
-- metadata-driven skill discovery and scoped skill resolution
+- folder-based skill discovery with explicit behavior/knowledge assignment
 - global typed registry (`Register.get(Type, name)`)
 - runtime discovery of tools and agents on every API interaction
 - streaming chat/tool/progress events to the UI
@@ -86,6 +86,7 @@ Example:
 ```python
 from core.contracts.agent import AgentModule, register_agent_class
 from core.contracts.execution import ExecutionConfig
+from core.contracts.memory import MemoryConfig
 
 @register_agent_class
 class MyAgent(AgentModule):
@@ -93,16 +94,18 @@ class MyAgent(AgentModule):
     description = "What it does"
     system_prompt = "How it should behave"
     tools = ("get_current_utc_time",)  # explicit tools only
-    skill_scopes = ("general", "support")
-    always_on_skills = ("general.persona",)
+    behavior = ("general.persona",)
+    knowledge = ("general.product", "support.triage")
     execution = ExecutionConfig(max_tool_calls=6)
+    memory = MemoryConfig(enabled=True, preserve_recent_turns=4, summarize_after_turns=6)
 ```
 
 Best practice:
 - keep `system_prompt` focused on behavior and output style
 - keep domain knowledge in skills, not in the prompt
-- use `skill_scopes` for what the agent is allowed to use
-- use `always_on_skills` only for small persona/policy instructions
+- use `behavior` for always-on behavior shaping
+- use `knowledge` for retrievable reference material
+- use `memory` when you want compact follow-up context with lower token growth
 - rely on implicit framework tools like `search_skills` instead of listing them on every agent
 - let the model decide whether tools are needed; use `execution` only for guardrails like tool-call budgets
 - use `hooks` for agent-specific prompt additions or final response shaping instead of pushing those behaviors into `core`
@@ -163,58 +166,53 @@ Framework-provided common tools:
 
 ## Authoring Skills
 
-Put markdown skills anywhere under `workspace/skills/...`.
+Put markdown skills under one of these folders:
 
 Examples:
 
-- `workspace/skills/general/product.md`
-- `workspace/skills/support/triage.md`
+- `workspace/skills/behavior/general/persona.md`
+- `workspace/skills/knowledge/support/triage.md`
 
 Skill ids come from the directory hierarchy under `workspace/skills/`:
 
-- `workspace/skills/general/product.md` -> `general.product`
-- `workspace/skills/support/triage.md` -> `support.triage`
+- `workspace/skills/behavior/general/persona.md` -> `general.persona`
+- `workspace/skills/knowledge/support/triage.md` -> `support.triage`
 
-Each skill file should start with frontmatter:
+There are only two user-facing skill classes:
 
 ```md
----
-title: Support Triage Workflow
-type: workflow
-summary: First-response and escalation workflow for support issues.
-tags: [support, triage, escalation]
-triggers: [issue, production, troubleshoot]
-mode: auto
-priority: 80
-requires_tools: [search_skills]
----
+# behavior/support/persona.md
+
+# Support Persona
+
+Keep troubleshooting replies concrete and operational.
 ```
 
-Supported skill `type` values:
+- `workspace/skills/behavior/...`
+  - always-on behavior shaping
+- `workspace/skills/knowledge/...`
+  - retrievable knowledge and reference content
+
+Within `behavior`, two common patterns are:
 
 - `persona`
+  - how the agent should sound and behave
+  - examples: be concise, be operational, avoid speculation
 - `policy`
-- `workflow`
-- `knowledge`
-
-Supported `mode` values:
-
-- `always_on`
-- `auto`
-- `manual`
+  - rules and boundaries the agent should follow
+  - examples: do not invent status, distinguish facts from assumptions, require verification before making commitments
 
 Best practice:
-- `persona`: short instructions that shape behavior
-- `policy`: rules, constraints, boundaries
-- `workflow`: step-by-step procedures
-- `knowledge`: product docs, FAQs, references, notes
+- use a heading and normal markdown content
+- let the framework infer title and summary
 - keep one skill focused on one concern instead of mixing everything into one file
+- use `behavior` only for guidance that should always shape the agent
+- use `knowledge` for docs, workflows, references, policies, and FAQs
 
-Agents now declare `skill_scopes` instead of pointing at one folder. The runtime:
+Agents now declare exact skill ids. The runtime:
 
-- filters skills by scope
-- always loads `always_on` skills in that scope, plus any explicit `always_on_skills`
-- chooses additional skills per request using metadata + lexical matching
+- always loads `behavior`
+- chooses from `knowledge` per request using lexical matching and chunk selection
 - injects summaries first and only adds detailed excerpts for the top matches
 
 The shared skill tools (`search_skills`, `list_skill_files`, `read_skill_file`) are framework-provided tools in `core/` rather than workspace tools. `search_skills` is available to agents through the default core toolset.
@@ -227,17 +225,15 @@ Use the backend upload endpoint to turn any markdown file into a skill:
 curl -X POST http://127.0.0.1:8000/api/skills/upload \
   -F "file=@/path/to/refund-faq.md" \
   -F "user_id=browser-user" \
-  -F "namespace=billing" \
-  -F "tags=billing,refund" \
-  -F "triggers=refund,annual plan"
+  -F "namespace=billing"
 ```
 
-Uploaded files are stored under `workspace/skills/uploads/...` and default to `type=knowledge`, `mode=auto`.
+Uploaded files are stored under `workspace/skills/uploads/...` and are treated as knowledge skills.
 
 That is the recommended default:
 
-- use `knowledge` for uploaded docs, notes, guides, FAQs, release notes, and product references
-- use `persona` only for short, stable instructions that should shape how an agent behaves
+- use uploaded knowledge for docs, notes, guides, FAQs, release notes, and product references
+- keep authored `behavior` skills for short, stable instructions that should shape how an agent behaves
 
 `uploads.<user-id>.*` skills are treated as user-scoped shared knowledge and are eligible for all agents only when the chat uses the same `user_id`.
 
@@ -289,10 +285,48 @@ from api import api
 
 agents = api.list_agents()
 result = await api.chat(message="Hello", agent_id=None)
+streamed_agent, session_id, events = await api.stream_chat_events(
+    message="Hello",
+    agent_id=None,
+    stream=True,
+)
 ```
+
+`stream=True` emits incremental `assistant_delta` events as the answer is generated.
+`stream=False` buffers the answer text and emits only the final `assistant_message`, while
+tool/progress events still stream live.
 
 ## Verification
 
 ```bash
-python3 -m unittest discover -s tests -p 'test_*.py'
+uv run python -m pytest
 ```
+
+## VS Code Related Tests
+
+The workspace now supports two test controllers:
+
+- the normal Python test controller, configured for `pytest`
+- a separate `Related Tests` controller driven by source-file metadata
+
+Related test metadata lives at the top of a source file:
+
+```python
+"""
+Tests:
+- tests/core/test_guardrails.py
+- tests/core/contracts/test_execution.py
+"""
+```
+
+The `Related Tests` controller keeps all test files under [`tests/`](./tests) and resolves only the declared files for the selected source module. Test execution still uses `pytest`, which will collect the existing `unittest.TestCase` suites. The workspace settings point VS Code at `.venv/bin/python` so both the Python extension and the related-test controller use the same interpreter by default.
+
+The main Testing-pane refresh remains global. To refresh one selected module in the related-tests tree, use `Refresh Related Tests` on that source item.
+
+To install the local VS Code extension source into your user extensions directory:
+
+```bash
+./scripts/install-related-tests-extension.sh
+```
+
+The extension source lives in [`vscode-related-tests/`](./vscode-related-tests), and its metadata helper lives in [`vscode-related-tests/python/related_tests_metadata.py`](./vscode-related-tests/python/related_tests_metadata.py).

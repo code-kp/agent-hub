@@ -11,8 +11,9 @@ Rules:
 - Agent ids come from the directory hierarchy under `agents/`
 - Tool modules are loaded before agent modules, so agents can reference tools by name
 - Skill ids come from the directory hierarchy under `skills/`
-- Skill files should have frontmatter metadata (`title`, `type`, `summary`, `tags`, `triggers`, `mode`, `priority`)
-- Agents select skills with `skill_scopes` and `always_on_skills`, not a single `skills_dir`
+- Skill files should live under either `skills/behavior/` or `skills/knowledge/`
+- Agents should use `behavior` and `knowledge`
+- `skill_scopes`, `always_on_skills`, and `skills_dir` still load for compatibility, but are no longer the recommended authoring model
 
 Use [../core/README.md](../core/README.md) for platform internals.
 Use this file for contributor-facing authoring rules.
@@ -26,8 +27,9 @@ Recommended:
 - register with `@register_agent_class`
 - keep the prompt focused on behavior and synthesis
 - reference only explicit tools by name
-- use `skill_scopes` to define allowed knowledge
-- use `always_on_skills` only for small persona/policy skills
+- use `behavior` for always-on behavior shaping
+- use `knowledge` for retrievable reference material
+- use `memory` when the agent should carry compact follow-up context across turns
 - let the model decide whether tools are needed; use `execution` only for tool-loop limits and guardrails
 - use `hooks` only for agent-specific prompt additions or final response shaping that should not move into `core`
 
@@ -36,6 +38,7 @@ Example:
 ```python
 from core.contracts.agent import AgentModule, register_agent_class
 from core.contracts.execution import ExecutionConfig
+from core.contracts.memory import MemoryConfig
 
 
 @register_agent_class
@@ -44,9 +47,18 @@ class MyAgent(AgentModule):
     description = "What it does"
     system_prompt = "How it should behave"
     tools = ("get_current_utc_time",)
-    skill_scopes = ("general",)
-    always_on_skills = ("general.persona",)
+    behavior = ("general.persona",)
+    knowledge = ("general.product",)
     execution = ExecutionConfig(max_tool_calls=6)
+    memory = MemoryConfig(enabled=True, preserve_recent_turns=4, summarize_after_turns=6)
+```
+
+If you want the agent to stay stateless, set:
+
+```python
+from core.contracts.memory import DISABLED_MEMORY_CONFIG
+
+memory = DISABLED_MEMORY_CONFIG
 ```
 
 Hook example:
@@ -148,57 +160,75 @@ Avoid:
 
 ## Best Way To Define A Skill
 
-Put skills in `workspace/skills/**/*.md`.
+Put skills in one of these folders:
+
+- `workspace/skills/behavior/...`
+- `workspace/skills/knowledge/...`
+
+That is the whole public model:
+
+- `behavior`
+  - always-on behavior shaping
+  - examples: persona, response boundaries, tone guidance
+- `knowledge`
+  - retrievable reference material
+  - examples: product facts, workflows, FAQs, policies, docs
+
+Inside `behavior`, the two common patterns are:
+
+- `persona`
+  - how the agent should sound and behave
+  - examples: be concise, be calm, be operational
+- `policy`
+  - rules and boundaries the agent should follow
+  - examples: do not invent status, separate facts from assumptions, require verification before commitments
 
 Recommended:
 - one concern per skill
-- high-quality frontmatter
-- short summary
-- meaningful triggers and tags
-
-Use the skill types like this:
-- `persona`
-  - short guidance that shapes how the agent behaves
-- `policy`
-  - rules, boundaries, constraints
-- `workflow`
-  - step-by-step operating procedures
-- `knowledge`
-  - factual docs, references, FAQs, release notes
+- use a heading and normal markdown content
+- let the framework infer title from the first heading or the file name
+- let the framework infer summary from the first paragraph
+- keep `behavior` files short and stable
+- keep `knowledge` files focused so retrieval can stay precise
 
 Example:
 
 ```md
----
-title: Refund Policy
-type: policy
-summary: Rules for handling refund questions.
-tags: [refund, billing, policy]
-triggers: [refund, cancel, annual plan]
-mode: auto
-priority: 80
----
+# Refund Policy
+
+Refunds are available for annual plans within 30 days of the original purchase.
+
+- Monthly plans are not refundable after the billing cycle starts.
+- Annual upgrades can be prorated if the customer is moving to enterprise.
 ```
 
-Use `mode` like this:
-- `always_on`
-  - small, stable instructions that should usually be present
-- `auto`
-  - normal retrievable skills selected per request
-- `manual`
-  - reserved for explicit future selection paths
+Public ids come from the path after `behavior/` or `knowledge/`:
+
+- `workspace/skills/behavior/support/persona.md` -> `support.persona`
+- `workspace/skills/knowledge/support/refunds.md` -> `support.refunds`
+
+Agents should list exact ids:
+
+- `behavior = ("support.persona", "support.policy")`
+- `knowledge = ("support.refunds", "general.product")`
 
 Avoid:
-- mixing persona, policy, workflow, and docs into one file
-- large summaries
-- weak frontmatter that makes retrieval harder
+- mixing behavior guidance and large reference docs into one file
+- putting all support knowledge into one giant markdown file
+- requiring authors to think about retrieval metadata before they can write a useful skill
+
+Compatibility note:
+- frontmatter still loads if it already exists
+- old `skill_scopes` and `always_on_skills` still work during migration
+- `behavior_skills` and `knowledge_skills` still work during migration
+- new docs and examples should use `behavior` and `knowledge`
 
 ## Namespace Rules
 
 - `workspace/agents/general.py` -> agent id `general`
 - `workspace/agents/support/triage.py` -> agent id `support.triage`
-- `workspace/skills/general/product.md` -> skill id `general.product`
-- `workspace/skills/support/policy.md` -> skill id `support.policy`
+- `workspace/skills/behavior/support/policy.md` -> skill id `support.policy`
+- `workspace/skills/knowledge/general/product.md` -> skill id `general.product`
 
 ## Design Rule
 
