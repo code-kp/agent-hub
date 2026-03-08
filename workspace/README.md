@@ -38,6 +38,7 @@ Example:
 from core.contracts.agent import AgentModule, register_agent_class
 from core.contracts.execution import ExecutionConfig
 from core.contracts.memory import MemoryConfig
+from core.contracts.models import lite_llm_model
 
 
 @register_agent_class
@@ -48,9 +49,19 @@ class MyAgent(AgentModule):
     tools = ("get_current_utc_time",)
     behavior = ("general.persona",)
     knowledge = ("general.product",)
+    model = lite_llm_model("openai/gpt-4o-mini")
     execution = ExecutionConfig(max_tool_calls=6)
     memory = MemoryConfig(enabled=True, preserve_recent_turns=4, summarize_after_turns=6)
 ```
+
+Model selection:
+- native ADK/Gemini: `model = "gemini-2.0-flash"`
+- LiteLLM through ADK: `model = lite_llm_model("openai/gpt-4o-mini")`
+- LiteLLM references must be explicit `provider/model` values such as `openai/gpt-4o-mini` or `gemini/gemini-2.0-flash`
+- env override:
+  - `MODEL_NAME=gemini-2.0-flash`
+  - `MODEL_NAME=openai/gpt-4o-mini` with `MODEL_BACKEND=litellm`
+  - or `MODEL_NAME=litellm:openai/gpt-4o-mini`
 
 If you want the agent to stay stateless, set:
 

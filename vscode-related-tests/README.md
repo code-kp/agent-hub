@@ -29,3 +29,9 @@ Coverage note:
 The extension ships its own Python metadata helper under `python/related_tests_metadata.py`, so the editor-specific logic stays out of the runtime framework.
 
 Switch editors to change the displayed module. Use `Refresh Related Tests` on the source item if you want to reload the active file after editing its metadata.
+
+Install from this workspace with:
+
+```bash
+uv run poe install-related-tests-extension
+```

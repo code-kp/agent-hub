@@ -63,12 +63,15 @@ uv run poe dev
 
 Open [http://127.0.0.1:3000](http://127.0.0.1:3000)
 
+`poe dev` and `poe stop` use a Python supervisor, so they work across macOS, Linux, and Windows without relying on `zsh`, `lsof`, or shell job control.
+
 ## Poe Tasks
 
 - `uv run poe backend`
 - `uv run poe frontend`
 - `uv run poe dev`
 - `uv run poe stop`
+- `uv run poe install-related-tests-extension`
 
 ## Authoring Agents
 
@@ -87,6 +90,7 @@ Example:
 from core.contracts.agent import AgentModule, register_agent_class
 from core.contracts.execution import ExecutionConfig
 from core.contracts.memory import MemoryConfig
+from core.contracts.models import lite_llm_model
 
 @register_agent_class
 class MyAgent(AgentModule):
@@ -96,6 +100,7 @@ class MyAgent(AgentModule):
     tools = ("get_current_utc_time",)  # explicit tools only
     behavior = ("general.persona",)
     knowledge = ("general.product", "support.triage")
+    model = lite_llm_model("openai/gpt-4o-mini")  # optional; omit to use the default Gemini model
     execution = ExecutionConfig(max_tool_calls=6)
     memory = MemoryConfig(enabled=True, preserve_recent_turns=4, summarize_after_turns=6)
 ```
@@ -105,10 +110,18 @@ Best practice:
 - keep domain knowledge in skills, not in the prompt
 - use `behavior` for always-on behavior shaping
 - use `knowledge` for retrievable reference material
+- use `model = "gemini-..."` for native ADK/Gemini models
+- use `model = lite_llm_model("provider/model")` or `model = "litellm:provider/model"` for LiteLLM-backed providers
+- when using LiteLLM, the provider must be explicit: `openai/gpt-4o-mini`, `anthropic/claude-3-7-sonnet`, `gemini/gemini-2.0-flash`
 - use `memory` when you want compact follow-up context with lower token growth
 - rely on implicit framework tools like `search_skills` instead of listing them on every agent
 - let the model decide whether tools are needed; use `execution` only for guardrails like tool-call budgets
 - use `hooks` for agent-specific prompt additions or final response shaping instead of pushing those behaviors into `core`
+
+Environment overrides:
+- `MODEL_NAME=gemini-2.0-flash` uses a native ADK/Gemini model
+- `MODEL_NAME=openai/gpt-4o-mini` with `MODEL_BACKEND=litellm` uses LiteLLM through ADK
+- `MODEL_NAME=litellm:openai/gpt-4o-mini` also works
 
 If you want the framework to drive an explicit `plan -> execute -> replan -> verify` loop, use `OrchestratedAgentModule` instead:
 
@@ -341,7 +354,7 @@ Switch editors to change the displayed module. To refresh the active source item
 To install the local VS Code extension source into your user extensions directory:
 
 ```bash
-./scripts/install-related-tests-extension.sh
+uv run poe install-related-tests-extension
 ```
 
 The extension source lives in [`vscode-related-tests/`](./vscode-related-tests), and its metadata helper lives in [`vscode-related-tests/python/related_tests_metadata.py`](./vscode-related-tests/python/related_tests_metadata.py).
