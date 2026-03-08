@@ -6,7 +6,14 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { LoadingScreen } from "./components/LoadingScreen";
 import { NavigationRail } from "./components/NavigationRail";
 import { SettingsModal } from "./components/SettingsModal";
-import { USER_ID_STORAGE_KEY, resolveInitialUserId, sanitizeUserId } from "./lib/preferences";
+import {
+  RESPONSE_STREAMING_STORAGE_KEY,
+  USER_ID_STORAGE_KEY,
+  normalizeResponseStreaming,
+  resolveInitialResponseStreaming,
+  resolveInitialUserId,
+  sanitizeUserId,
+} from "./lib/preferences";
 import { useWorkspaceChat } from "./hooks/useWorkspaceChat";
 import {
   THEME_MODE_STORAGE_KEY,
@@ -39,6 +46,7 @@ function resolveInitialSidebarWidth() {
 export function App() {
   const [themeMode, setThemeMode] = React.useState(resolveInitialThemeMode);
   const [userId, setUserId] = React.useState(resolveInitialUserId);
+  const [responseStreaming, setResponseStreaming] = React.useState(resolveInitialResponseStreaming);
   const [isAgentPickerOpen, setIsAgentPickerOpen] = React.useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
   const [agentPickerMode, setAgentPickerMode] = React.useState("switch");
@@ -67,7 +75,7 @@ export function App() {
     serviceHealth,
     searchText,
     setSearchText,
-  } = useWorkspaceChat(userId);
+  } = useWorkspaceChat(userId, responseStreaming);
 
   React.useEffect(() => {
     applyTheme(themeMode);
@@ -95,6 +103,13 @@ export function App() {
   React.useEffect(() => {
     window.localStorage.setItem(USER_ID_STORAGE_KEY, sanitizeUserId(userId));
   }, [userId]);
+
+  React.useEffect(() => {
+    window.localStorage.setItem(
+      RESPONSE_STREAMING_STORAGE_KEY,
+      String(normalizeResponseStreaming(responseStreaming)),
+    );
+  }, [responseStreaming]);
 
   React.useEffect(() => {
     if (!isResizingSidebar) {
@@ -156,6 +171,9 @@ export function App() {
   }, []);
   const handleUserIdChange = React.useCallback((nextUserId) => {
     setUserId(sanitizeUserId(nextUserId));
+  }, []);
+  const handleResponseStreamingChange = React.useCallback((nextValue) => {
+    setResponseStreaming(normalizeResponseStreaming(nextValue));
   }, []);
   const handleAgentPickerSelect = React.useCallback((agentId) => {
     if (agentPickerMode === "new_chat") {
@@ -284,6 +302,8 @@ export function App() {
         onThemeModeChange={setThemeMode}
         userId={userId}
         onUserIdChange={handleUserIdChange}
+        responseStreaming={responseStreaming}
+        onResponseStreamingChange={handleResponseStreamingChange}
       />
     </main>
   );

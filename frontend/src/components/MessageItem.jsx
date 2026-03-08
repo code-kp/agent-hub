@@ -1,7 +1,8 @@
 import React from "react";
 
+import { AnimatedMessageBody } from "./AnimatedMessageBody";
 import { ExecutionSteps } from "./ExecutionSteps";
-import { MarkdownContent } from "./MarkdownContent";
+import { TokenUsagePopover } from "./TokenUsagePopover";
 import { formatTime, toDateTimeAttr } from "../lib/time";
 
 export function MessageItem({ message }) {
@@ -28,9 +29,19 @@ export function MessageItem({ message }) {
             {isUser && targetLabel ? <span className="message-target">To {targetLabel}</span> : null}
             {!isUser && message.streaming ? <span className="message-streaming-badge">Live</span> : null}
           </div>
-          <time dateTime={timestamp}>{formatTime(message.createdAt)}</time>
+          <div className="message-meta">
+            {!isUser ? (
+              <TokenUsagePopover usage={message.usage} streaming={Boolean(message.streaming)} />
+            ) : null}
+            <time dateTime={timestamp}>{formatTime(message.createdAt)}</time>
+          </div>
         </header>
-        <div className={isUser ? "message-card user-message" : "message-card assistant-message"}>
+        <div
+          className={[
+            isUser ? "message-card user-message" : "message-card assistant-message",
+            !isUser && message.streaming ? "streaming" : "",
+          ].filter(Boolean).join(" ")}
+        >
           {showExecution ? (
             <div className="execution-focus-anchor" data-execution-anchor="true">
               <ExecutionSteps
@@ -39,7 +50,12 @@ export function MessageItem({ message }) {
               />
             </div>
           ) : null}
-          {isUser || assistantText ? <MarkdownContent text={assistantText} /> : null}
+          {isUser || assistantText ? (
+            <AnimatedMessageBody
+              text={assistantText}
+              streaming={!isUser && Boolean(message.streaming)}
+            />
+          ) : null}
         </div>
       </div>
     </article>

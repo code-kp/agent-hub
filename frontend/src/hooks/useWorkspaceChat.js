@@ -1,6 +1,7 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
-import { fetchAgents, fetchHealth, streamChat } from "../api/client";
+import { fetchAgents, fetchHealth, invokeAi, streamChat } from "../api/client";
+import { buildConversationTitleInstructions, buildConversationTitleMessage } from "../lib/aiPrompts";
 import {
   buildChatTitle,
   createAssistantMessage,
@@ -9,13 +10,14 @@ import {
   createUserMessage,
   filterTree,
   normalizeAgentTree,
+  serializeConversationHistory,
 } from "../lib/chatWorkspace";
 
 function buildSessionKey(userId, agentId) {
   return `${userId}::${agentId}`;
 }
 
-export function useWorkspaceChat(userId) {
+export function useWorkspaceChat(userId, responseStreaming) {
   const [tree, setTree] = useState([]);
   const [agents, setAgents] = useState([]);
   const [chats, setChats] = useState([]);
@@ -33,6 +35,9 @@ export function useWorkspaceChat(userId) {
   const [error, setError] = useState("");
   const deferredSearch = useDeferredValue(searchText);
   const loadRequestRef = useRef(0);
+  const pendingAssistantTextRef = useRef(new Map());
+  const pendingStreamingStateRef = useRef(new Map());
+  const flushAssistantFrameRef = useRef(0);
 
   const applyAgentCatalog = useCallback((data) => {
     const incomingAgents = data.agents || [];
@@ -83,12 +88,9 @@ export function useWorkspaceChat(userId) {
         return;
       }
 
-      const incomingAgents = applyAgentCatalog(data);
-      const defaultAgentId = data.default_agent_id || incomingAgents[0]?.id || "";
-      const initialChat = defaultAgentId ? createChat(defaultAgentId, incomingAgents, []) : null;
-
-      setChats(initialChat ? [initialChat] : []);
-      setActiveChatId(initialChat?.id || "");
+      applyAgentCatalog(data);
+      setChats([]);
+      setActiveChatId("");
       setInitialLoadError("");
       setInitialLoadRetrying(false);
     } catch (err) {
@@ -118,6 +120,9 @@ export function useWorkspaceChat(userId) {
     void loadWorkspace();
 
     return () => {
+      if (flushAssistantFrameRef.current) {
+        window.cancelAnimationFrame(flushAssistantFrameRef.current);
+      }
       loadRequestRef.current += 1;
     };
   }, [loadWorkspace]);
@@ -166,6 +171,67 @@ export function useWorkspaceChat(userId) {
     );
   };
 
+  const flushPendingAssistantText = useCallback(() => {
+    if (flushAssistantFrameRef.current) {
+      window.cancelAnimationFrame(flushAssistantFrameRef.current);
+      flushAssistantFrameRef.current = 0;
+    }
+
+    const pendingChunks = pendingAssistantTextRef.current;
+    const pendingStreamingStates = pendingStreamingStateRef.current;
+    if (!pendingChunks.size && !pendingStreamingStates.size) {
+      return;
+    }
+
+    setChats((prev) => prev.map((chat) => {
+      let messages = null;
+
+      chat.messages.forEach((message, index) => {
+        const key = `${chat.id}:${message.id}`;
+        const nextChunk = pendingChunks.get(key);
+        const nextStreamingState = pendingStreamingStates.get(key);
+
+        if (nextChunk === undefined && nextStreamingState === undefined) {
+          return;
+        }
+
+        if (!messages) {
+          messages = [...chat.messages];
+        }
+
+        messages[index] = {
+          ...messages[index],
+          text: nextChunk !== undefined ? `${messages[index].text}${nextChunk}` : messages[index].text,
+          streaming: nextStreamingState ?? messages[index].streaming,
+        };
+      });
+
+      if (!messages) {
+        return chat;
+      }
+
+      return {
+        ...chat,
+        messages,
+        updatedAt: Date.now(),
+      };
+    }));
+
+    pendingChunks.clear();
+    pendingStreamingStates.clear();
+  }, []);
+
+  const scheduleAssistantFlush = useCallback(() => {
+    if (flushAssistantFrameRef.current) {
+      return;
+    }
+
+    flushAssistantFrameRef.current = window.requestAnimationFrame(() => {
+      flushAssistantFrameRef.current = 0;
+      flushPendingAssistantText();
+    });
+  }, [flushPendingAssistantText]);
+
   const appendThinkingEvent = (chatId, messageId, type, payload) => {
     const event = createThinkingEvent(type, payload);
     updateMessage(chatId, messageId, (current) => ({
@@ -192,6 +258,7 @@ export function useWorkspaceChat(userId) {
       ...chat,
       agentId,
       title: chat.messages.length ? chat.title : buildChatTitle(agentId, agents, chats, chat.id),
+      titleSource: chat.messages.length ? chat.titleSource : "default",
       updatedAt: Date.now(),
     }));
   };
@@ -218,16 +285,7 @@ export function useWorkspaceChat(userId) {
 
     try {
       const data = await fetchAgents();
-      const incomingAgents = applyAgentCatalog(data);
-
-      if (!activeChatId) {
-        const defaultAgentId = data.default_agent_id || incomingAgents[0]?.id || "";
-        if (defaultAgentId) {
-          const nextChat = createChat(defaultAgentId, incomingAgents, []);
-          setChats([nextChat]);
-          setActiveChatId(nextChat.id);
-        }
-      }
+      applyAgentCatalog(data);
 
       return data;
     } catch (err) {
@@ -261,11 +319,14 @@ export function useWorkspaceChat(userId) {
       targetAgentName: activeAgent?.name || activeAgentId,
     });
 
+    const shouldGenerateTitle = activeChat.messages.every((item) => item.role !== "user");
+    const conversationHistory = serializeConversationHistory(activeChat.messages);
+    let finalAssistantText = "";
+
     updateChat(chatId, (chat) => ({
       ...chat,
-      title: chat.messages.some((item) => item.role === "user")
-        ? chat.title
-        : text.trim().slice(0, 46) || chat.title,
+      title: chat.title,
+      titleSource: shouldGenerateTitle ? "pending" : chat.titleSource,
       messages: [...chat.messages, userMessage, assistantMessage],
       updatedAt: Date.now(),
     }));
@@ -277,12 +338,42 @@ export function useWorkspaceChat(userId) {
     });
     setError("");
 
+    if (shouldGenerateTitle) {
+      void invokeAi({
+        agentId: activeAgentId,
+        instructions: buildConversationTitleInstructions(),
+        message: buildConversationTitleMessage(text),
+      }).then((title) => {
+        if (!title.trim()) {
+          updateChat(chatId, (chat) => ({
+            ...chat,
+            titleSource: "default",
+          }));
+          return;
+        }
+
+        updateChat(chatId, (chat) => ({
+          ...chat,
+          title,
+          titleSource: "generated",
+          updatedAt: Date.now(),
+        }));
+      }).catch(() => {
+        updateChat(chatId, (chat) => ({
+          ...chat,
+          titleSource: chat.titleSource === "pending" ? "default" : chat.titleSource,
+        }));
+      });
+    }
+
     try {
       const result = await streamChat({
         agentId: activeAgentId,
         message: text,
         sessionId: activeSessionId || null,
         userId,
+        history: conversationHistory,
+        stream: responseStreaming,
         onEvent: (type, payload = {}) => {
           if (type === "run_started" && payload.session_id) {
             updateChat(chatId, (chat) => ({
@@ -307,22 +398,29 @@ export function useWorkspaceChat(userId) {
           }
 
           if (type === "assistant_delta" && payload.text) {
-            updateMessage(chatId, assistantMessage.id, (current) => ({
-              ...current,
-              text: `${current.text}${payload.text}`,
-              streaming: true,
-            }));
+            finalAssistantText += payload.text;
+            const key = `${chatId}:${assistantMessage.id}`;
+            pendingAssistantTextRef.current.set(
+              key,
+              `${pendingAssistantTextRef.current.get(key) || ""}${payload.text}`,
+            );
+            pendingStreamingStateRef.current.set(key, true);
+            scheduleAssistantFlush();
           }
 
           if (type === "assistant_message") {
+            flushPendingAssistantText();
+            finalAssistantText = payload.text || finalAssistantText;
             updateMessage(chatId, assistantMessage.id, (current) => ({
               ...current,
               text: payload.text || current.text,
               streaming: false,
+              usage: payload.usage || current.usage || null,
             }));
           }
 
           if (type === "run_completed") {
+            flushPendingAssistantText();
             updateMessage(chatId, assistantMessage.id, (current) => ({
               ...current,
               thinkingActive: false,
@@ -331,6 +429,7 @@ export function useWorkspaceChat(userId) {
           }
 
           if (type === "error") {
+            flushPendingAssistantText();
             updateMessage(chatId, assistantMessage.id, (current) => ({
               ...current,
               text: current.text || "Run failed before a final assistant message.",
@@ -352,6 +451,7 @@ export function useWorkspaceChat(userId) {
         }));
       }
     } catch (err) {
+      flushPendingAssistantText();
       setError(err.message || "Failed to stream response.");
       updateMessage(chatId, assistantMessage.id, (current) => ({
         ...current,

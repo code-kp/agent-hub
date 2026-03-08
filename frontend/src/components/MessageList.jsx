@@ -120,6 +120,35 @@ export function MessageList({ messages, agentName, agentDescription }) {
     return undefined;
   }, [messages]);
 
+  useEffect(() => {
+    if (!listRef.current || typeof ResizeObserver === "undefined") {
+      return undefined;
+    }
+
+    const lastMessage = messages[messages.length - 1] || null;
+    if (!lastMessage || !lastMessage.streaming) {
+      return undefined;
+    }
+
+    const container = listRef.current;
+    const targetNode = container.querySelector(`[data-message-id="${lastMessage.id}"]`);
+    if (!targetNode) {
+      return undefined;
+    }
+
+    const observer = new ResizeObserver(() => {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: "auto",
+      });
+    });
+
+    observer.observe(targetNode);
+    return () => {
+      observer.disconnect();
+    };
+  }, [messages]);
+
   if (!messages.length) {
     return (
       <div className="conversation-empty">

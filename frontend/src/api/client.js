@@ -116,11 +116,36 @@ export async function uploadSkillFile({
   return payload;
 }
 
+export async function invokeAi({
+  agentId,
+  instructions,
+  message,
+}) {
+  const response = await fetch(`${API_BASE}/api/ai`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      agent_id: agentId,
+      instructions,
+      message,
+    }),
+  });
+
+  const payload = await readResponsePayload(response);
+  if (!response.ok) {
+    throw new Error(payload.detail || payload.message || payload.text || `AI request failed with ${response.status}`);
+  }
+
+  return payload.text || "";
+}
+
 export async function streamChat({
   agentId,
   message,
   sessionId,
   userId = "browser-user",
+  history,
+  stream = true,
   onEvent,
 }) {
   const response = await fetch(`${API_BASE}/api/chat/stream`, {
@@ -131,6 +156,8 @@ export async function streamChat({
       message,
       session_id: sessionId,
       user_id: userId,
+      history,
+      stream,
     }),
   });
 

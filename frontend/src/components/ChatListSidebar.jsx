@@ -72,7 +72,7 @@ export function ChatListSidebar({
             );
           })
         ) : (
-          <div className="chat-sidebar-empty">Create a chat to start messaging agents.</div>
+          <div className="chat-sidebar-empty">Choose an agent to start your first conversation.</div>
         )}
       </div>
 

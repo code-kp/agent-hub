@@ -158,9 +158,20 @@ export function createChat(agentId, agents, chats) {
   return {
     id: crypto.randomUUID(),
     title: buildChatTitle(agentId, agents, chats),
+    titleSource: "default",
     agentId,
     sessionIds: {},
     messages: [],
     updatedAt: Date.now(),
   };
+}
+
+export function serializeConversationHistory(messages, limit = 8) {
+  return messages
+    .filter((message) => ["user", "assistant"].includes(message.role) && String(message.text || "").trim())
+    .slice(-limit)
+    .map((message) => ({
+      role: message.role,
+      text: String(message.text || "").trim(),
+    }));
 }

@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
 import { KnowledgeUploadCard } from "./KnowledgeUploadCard";
+import { ResponseStreamingCard } from "./ResponseStreamingCard";
 import { ThemeToggle } from "./ThemeToggle";
 import { UserIdentityCard } from "./UserIdentityCard";
 
 const SETTINGS_TABS = [
   { id: "appearance", label: "Appearance" },
+  { id: "responses", label: "Responses" },
   { id: "identity", label: "Identity" },
   { id: "knowledge", label: "Knowledge" },
 ];
@@ -17,6 +19,8 @@ export function SettingsModal({
   onThemeModeChange,
   userId,
   onUserIdChange,
+  responseStreaming,
+  onResponseStreamingChange,
 }) {
   const [activeTab, setActiveTab] = useState("appearance");
   const panelRef = useRef(null);
@@ -57,6 +61,15 @@ export function SettingsModal({
 
     if (activeTab === "knowledge") {
       return <KnowledgeUploadCard userId={userId} />;
+    }
+
+    if (activeTab === "responses") {
+      return (
+        <ResponseStreamingCard
+          enabled={responseStreaming}
+          onChange={onResponseStreamingChange}
+        />
+      );
     }
 
     return (
