@@ -6,15 +6,17 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { LoadingScreen } from "./components/LoadingScreen";
 import { NavigationRail } from "./components/NavigationRail";
 import { SettingsModal } from "./components/SettingsModal";
+import { fetchModels } from "./api/client";
 import {
-  MODEL_NAME_STORAGE_KEY,
+  DEFAULT_MODEL_ID_STORAGE_KEY,
+  LEGACY_MODEL_NAME_STORAGE_KEY,
   RESPONSE_STREAMING_STORAGE_KEY,
   USER_ID_STORAGE_KEY,
-  resolveInitialModelName,
+  resolveInitialDefaultModelId,
   normalizeResponseStreaming,
   resolveInitialResponseStreaming,
   resolveInitialUserId,
-  sanitizeModelName,
+  sanitizeModelId,
   sanitizeUserId,
 } from "./lib/preferences";
 import { useWorkspaceChat } from "./hooks/useWorkspaceChat";
@@ -49,7 +51,11 @@ function resolveInitialSidebarWidth() {
 export function App() {
   const [themeMode, setThemeMode] = React.useState(resolveInitialThemeMode);
   const [userId, setUserId] = React.useState(resolveInitialUserId);
-  const [modelName, setModelName] = React.useState(resolveInitialModelName);
+  const [defaultModelId, setDefaultModelId] = React.useState(resolveInitialDefaultModelId);
+  const [chatModelId, setChatModelId] = React.useState("");
+  const [availableModels, setAvailableModels] = React.useState([]);
+  const [modelsLoading, setModelsLoading] = React.useState(true);
+  const [modelCatalogError, setModelCatalogError] = React.useState("");
   const [responseStreaming, setResponseStreaming] = React.useState(resolveInitialResponseStreaming);
   const [isAgentPickerOpen, setIsAgentPickerOpen] = React.useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
@@ -57,6 +63,7 @@ export function App() {
   const [sidebarWidth, setSidebarWidth] = React.useState(resolveInitialSidebarWidth);
   const [isResizingSidebar, setIsResizingSidebar] = React.useState(false);
   const resizeStateRef = React.useRef(null);
+  const effectiveModelId = chatModelId || defaultModelId;
   const {
     activeAgent,
     activeAgentId,
@@ -71,7 +78,9 @@ export function App() {
     initialLoadRetrying,
     isSending,
     loading,
+    onDeleteChat,
     onNewChat,
+    onRenameChat,
     onSelectAgent,
     onSelectChat,
     onSetRuntimeMode,
@@ -82,7 +91,7 @@ export function App() {
     serviceHealth,
     searchText,
     setSearchText,
-  } = useWorkspaceChat(userId, responseStreaming, modelName);
+  } = useWorkspaceChat(userId, responseStreaming, effectiveModelId);
 
   React.useEffect(() => {
     applyTheme(themeMode);
@@ -112,8 +121,56 @@ export function App() {
   }, [userId]);
 
   React.useEffect(() => {
-    window.localStorage.setItem(MODEL_NAME_STORAGE_KEY, sanitizeModelName(modelName));
-  }, [modelName]);
+    window.localStorage.setItem(
+      DEFAULT_MODEL_ID_STORAGE_KEY,
+      sanitizeModelId(defaultModelId),
+    );
+    window.localStorage.removeItem(LEGACY_MODEL_NAME_STORAGE_KEY);
+  }, [defaultModelId]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    const loadModelCatalog = async () => {
+      setModelsLoading(true);
+
+      try {
+        const payload = await fetchModels();
+        if (cancelled) {
+          return;
+        }
+
+        const nextModels = Array.isArray(payload.models) ? payload.models : [];
+        setAvailableModels(nextModels);
+        setModelCatalogError("");
+        setDefaultModelId((current) => (
+          current && !nextModels.some((item) => item.id === current) ? "" : current
+        ));
+        setChatModelId((current) => (
+          current && !nextModels.some((item) => item.id === current) ? "" : current
+        ));
+      } catch (err) {
+        if (cancelled) {
+          return;
+        }
+
+        setAvailableModels([]);
+        setModelCatalogError(err?.message || "Failed to load the model catalog.");
+        setDefaultModelId("");
+        setChatModelId("");
+      } finally {
+        if (!cancelled) {
+          setModelsLoading(false);
+        }
+      }
+    };
+
+    void loadModelCatalog();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   React.useEffect(() => {
     window.localStorage.setItem(
@@ -186,8 +243,11 @@ export function App() {
   const handleResponseStreamingChange = React.useCallback((nextValue) => {
     setResponseStreaming(normalizeResponseStreaming(nextValue));
   }, []);
-  const handleModelNameChange = React.useCallback((nextValue) => {
-    setModelName(sanitizeModelName(nextValue));
+  const handleDefaultModelIdChange = React.useCallback((nextValue) => {
+    setDefaultModelId(sanitizeModelId(nextValue));
+  }, []);
+  const handleChatModelIdChange = React.useCallback((nextValue) => {
+    setChatModelId(sanitizeModelId(nextValue));
   }, []);
   const handleAgentPickerSelect = React.useCallback((agentId) => {
     if (agentPickerMode === "new_chat") {
@@ -237,6 +297,8 @@ export function App() {
     }
   }, []);
 
+  const bannerError = error || modelCatalogError;
+
   if (loading || initialLoadError) {
     return (
       <LoadingScreen
@@ -260,8 +322,10 @@ export function App() {
       <NavigationRail
         activeChatId={activeChat?.id || ""}
         chats={chats}
+        onDeleteChat={onDeleteChat}
         onNewChat={openAgentPickerForNewChat}
         onOpenSettings={openSettings}
+        onRenameChat={onRenameChat}
         onSelectChat={onSelectChat}
       />
       <div
@@ -279,7 +343,7 @@ export function App() {
       />
 
       <section className="workspace">
-        {error ? <div className="error-banner">{error}</div> : null}
+        {bannerError ? <div className="error-banner">{bannerError}</div> : null}
         <ErrorBoundary
           resetKey={`${activeChat?.id || ""}:${activeChat?.messages?.length || 0}:${activeAgentId}`}
         >
@@ -293,7 +357,12 @@ export function App() {
             isSending={isSending}
             disabled={!activeAgentId || isSending}
             orchestrationAvailable={orchestrationAvailable}
+            defaultModelId={defaultModelId}
+            modelId={chatModelId}
+            modelOptions={availableModels}
+            modelsLoading={modelsLoading}
             runtimeMode={activeRuntimeMode}
+            onModelIdChange={handleChatModelIdChange}
             onOpenAgentPicker={openAgentPickerForSwitch}
             onSetRuntimeMode={onSetRuntimeMode}
             onSend={onSend}
@@ -321,8 +390,10 @@ export function App() {
         onUserIdChange={handleUserIdChange}
         responseStreaming={responseStreaming}
         onResponseStreamingChange={handleResponseStreamingChange}
-        modelName={modelName}
-        onModelNameChange={handleModelNameChange}
+        defaultModelId={defaultModelId}
+        modelOptions={availableModels}
+        modelsLoading={modelsLoading}
+        onDefaultModelIdChange={handleDefaultModelIdChange}
       />
     </main>
   );

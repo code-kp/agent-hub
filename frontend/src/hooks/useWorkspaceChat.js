@@ -1,6 +1,13 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
-import { fetchAgents, fetchHealth, invokeAi, streamChat } from "../api/client";
+import {
+  fetchAgents,
+  fetchConversations,
+  fetchHealth,
+  invokeAi,
+  saveConversations,
+  streamChat,
+} from "../api/client";
 import { buildConversationTitleInstructions, buildConversationTitleMessage } from "../lib/aiPrompts";
 import {
   agentSupportsOrchestration,
@@ -13,9 +20,8 @@ import {
   normalizeAgentTree,
   normalizeRuntimeMode,
   resolveChatRuntimeMode,
-  serializeConversationHistory,
 } from "../lib/chatWorkspace";
-import { sanitizeModelName } from "../lib/preferences";
+import { sanitizeModelId } from "../lib/preferences";
 
 const EXECUTION_EVENT_TYPES = new Set([
   "thinking_step",
@@ -27,12 +33,12 @@ const EXECUTION_EVENT_TYPES = new Set([
   "error",
 ]);
 
-function buildSessionKey(userId, agentId, runtimeMode, modelName) {
-  const normalizedModelName = sanitizeModelName(modelName) || "__default_model__";
-  return `${userId}::${agentId}::${normalizeRuntimeMode(runtimeMode)}::${normalizedModelName}`;
+function buildSessionKey(userId, agentId, runtimeMode, modelId) {
+  const normalizedModelId = sanitizeModelId(modelId) || "__default_model__";
+  return `${userId}::${agentId}::${normalizeRuntimeMode(runtimeMode)}::${normalizedModelId}`;
 }
 
-export function useWorkspaceChat(userId, responseStreaming, modelName) {
+export function useWorkspaceChat(userId, responseStreaming, modelId) {
   const [tree, setTree] = useState([]);
   const [agents, setAgents] = useState([]);
   const [chats, setChats] = useState([]);
@@ -52,6 +58,41 @@ export function useWorkspaceChat(userId, responseStreaming, modelName) {
   const loadRequestRef = useRef(0);
   const pendingAssistantTextRef = useRef(new Map());
   const flushAssistantFrameRef = useRef(0);
+  const persistTimeoutRef = useRef(0);
+  const conversationsHydratedRef = useRef(false);
+
+  const normalizeStoredChat = useCallback((chat, availableAgents) => {
+    if (!chat || typeof chat !== "object") {
+      return null;
+    }
+
+    const agentId = String(chat.agentId || "").trim();
+    const agent = availableAgents.find((item) => item.id === agentId) || null;
+    const messages = Array.isArray(chat.messages) ? chat.messages : [];
+    const normalizedMessages = messages
+      .filter((item) => item && typeof item === "object")
+      .map((message) => ({
+        ...message,
+        streaming: false,
+        thinkingActive: false,
+      }))
+      .filter((message) => (
+        message.role !== "assistant"
+          || String(message.text || "").trim()
+          || (Array.isArray(message.thinking) && message.thinking.length)
+      ));
+
+    return {
+      id: String(chat.id || crypto.randomUUID()),
+      title: String(chat.title || buildChatTitle(agentId, availableAgents, [])),
+      titleSource: String(chat.titleSource || "default"),
+      agentId,
+      runtimeMode: resolveChatRuntimeMode(agent, chat.runtimeMode),
+      sessionIds: chat.sessionIds && typeof chat.sessionIds === "object" ? chat.sessionIds : {},
+      messages: normalizedMessages,
+      updatedAt: Number(chat.updatedAt) || Date.now(),
+    };
+  }, []);
 
   const applyAgentCatalog = useCallback((data) => {
     const incomingAgents = data.agents || [];
@@ -76,6 +117,7 @@ export function useWorkspaceChat(userId, responseStreaming, modelName) {
   const loadWorkspace = useCallback(async ({ retry = false } = {}) => {
     const requestId = loadRequestRef.current + 1;
     loadRequestRef.current = requestId;
+    conversationsHydratedRef.current = false;
 
     setLoading(true);
     setError("");
@@ -110,16 +152,29 @@ export function useWorkspaceChat(userId, responseStreaming, modelName) {
     });
 
     try {
-      const data = await fetchAgents();
+      const [data, conversationPayload] = await Promise.all([
+        fetchAgents(),
+        fetchConversations({ userId }),
+      ]);
       if (loadRequestRef.current !== requestId) {
         return;
       }
 
-      applyAgentCatalog(data);
-      setChats([]);
-      setActiveChatId("");
+      const incomingAgents = applyAgentCatalog(data);
+      const loadedChats = (Array.isArray(conversationPayload?.chats) ? conversationPayload.chats : [])
+        .map((chat) => normalizeStoredChat(chat, incomingAgents))
+        .filter(Boolean);
+      loadedChats.sort((left, right) => (right.updatedAt || 0) - (left.updatedAt || 0));
+
+      setChats(loadedChats);
+      setActiveChatId((current) => (
+        current && loadedChats.some((chat) => chat.id === current)
+          ? current
+          : (loadedChats[0]?.id || "")
+      ));
       setInitialLoadError("");
       setInitialLoadRetrying(false);
+      conversationsHydratedRef.current = true;
     } catch (err) {
       const health = await healthPromise;
       if (loadRequestRef.current !== requestId) {
@@ -141,12 +196,15 @@ export function useWorkspaceChat(userId, responseStreaming, modelName) {
         setLoading(false);
       }
     }
-  }, [applyAgentCatalog]);
+  }, [applyAgentCatalog, normalizeStoredChat, userId]);
 
   useEffect(() => {
     void loadWorkspace();
 
     return () => {
+      if (persistTimeoutRef.current) {
+        window.clearTimeout(persistTimeoutRef.current);
+      }
       if (flushAssistantFrameRef.current) {
         window.cancelAnimationFrame(flushAssistantFrameRef.current);
       }
@@ -154,6 +212,26 @@ export function useWorkspaceChat(userId, responseStreaming, modelName) {
       loadRequestRef.current += 1;
     };
   }, [loadWorkspace]);
+
+  useEffect(() => {
+    if (!conversationsHydratedRef.current || loading) {
+      return undefined;
+    }
+
+    if (persistTimeoutRef.current) {
+      window.clearTimeout(persistTimeoutRef.current);
+    }
+
+    persistTimeoutRef.current = window.setTimeout(() => {
+      void saveConversations({ userId, chats }).catch(() => {});
+    }, 250);
+
+    return () => {
+      if (persistTimeoutRef.current) {
+        window.clearTimeout(persistTimeoutRef.current);
+      }
+    };
+  }, [chats, loading, userId]);
 
   const activeChat = useMemo(
     () => chats.find((chat) => chat.id === activeChatId) || null,
@@ -169,7 +247,7 @@ export function useWorkspaceChat(userId, responseStreaming, modelName) {
     [activeAgent, activeChat?.runtimeMode],
   );
   const activeSessionId = activeChat?.sessionIds?.[
-    buildSessionKey(userId, activeAgentId, activeRuntimeMode, modelName)
+    buildSessionKey(userId, activeAgentId, activeRuntimeMode, modelId)
   ] || "";
   const orchestrationAvailable = agentSupportsOrchestration(activeAgent);
   const isSending = activeChat ? runningChatIds.has(activeChat.id) : false;
@@ -321,6 +399,54 @@ export function useWorkspaceChat(userId, responseStreaming, modelName) {
     setError("");
   };
 
+  const onDeleteChat = (chatId) => {
+    const normalizedChatId = String(chatId || "").trim();
+    if (!normalizedChatId || runningChatIds.has(normalizedChatId)) {
+      return;
+    }
+
+    const nextChats = chats.filter((chat) => chat.id !== normalizedChatId);
+    if (nextChats.length === chats.length) {
+      return;
+    }
+
+    pendingAssistantTextRef.current.forEach((_value, key) => {
+      if (key.startsWith(`${normalizedChatId}:`)) {
+        pendingAssistantTextRef.current.delete(key);
+      }
+    });
+
+    setChats(nextChats);
+    if (activeChatId === normalizedChatId) {
+      const nextActiveChatId = [...nextChats]
+        .sort((left, right) => (right.updatedAt || 0) - (left.updatedAt || 0))[0]?.id || "";
+      setActiveChatId(nextActiveChatId);
+    }
+    setError("");
+  };
+
+  const onRenameChat = (chatId, nextTitle) => {
+    const normalizedChatId = String(chatId || "").trim();
+    const normalizedTitle = String(nextTitle || "").trim();
+    if (!normalizedChatId || !normalizedTitle) {
+      return;
+    }
+
+    setChats((prev) => prev.map((chat) => {
+      if (chat.id !== normalizedChatId || chat.title === normalizedTitle) {
+        return chat;
+      }
+
+      return {
+        ...chat,
+        title: normalizedTitle,
+        titleSource: "manual",
+        updatedAt: Date.now(),
+      };
+    }));
+    setError("");
+  };
+
   const onNewChat = (agentId = activeAgentId || agents[0]?.id || "") => {
     if (!agentId) {
       return;
@@ -389,7 +515,6 @@ export function useWorkspaceChat(userId, responseStreaming, modelName) {
     });
 
     const shouldGenerateTitle = activeChat.messages.every((item) => item.role !== "user");
-    const conversationHistory = serializeConversationHistory(activeChat.messages);
     let finalAssistantText = "";
 
     updateChat(chatId, (chat) => ({
@@ -410,24 +535,28 @@ export function useWorkspaceChat(userId, responseStreaming, modelName) {
     if (shouldGenerateTitle) {
       void invokeAi({
         agentId: activeAgentId,
-        modelName,
+        modelId,
         instructions: buildConversationTitleInstructions(),
         message: buildConversationTitleMessage(text),
       }).then((title) => {
         if (!title.trim()) {
           updateChat(chatId, (chat) => ({
             ...chat,
-            titleSource: "default",
+            titleSource: chat.titleSource === "pending" ? "default" : chat.titleSource,
           }));
           return;
         }
 
-        updateChat(chatId, (chat) => ({
-          ...chat,
-          title,
-          titleSource: "generated",
-          updatedAt: Date.now(),
-        }));
+        updateChat(chatId, (chat) => (
+          chat.titleSource === "pending"
+            ? {
+              ...chat,
+              title,
+              titleSource: "generated",
+              updatedAt: Date.now(),
+            }
+            : chat
+        ));
       }).catch(() => {
         updateChat(chatId, (chat) => ({
           ...chat,
@@ -440,11 +569,11 @@ export function useWorkspaceChat(userId, responseStreaming, modelName) {
       const result = await streamChat({
         agentId: activeAgentId,
         mode: runtimeMode,
-        modelName,
+        modelId,
+        conversationId: chatId,
         message: text,
         sessionId: activeSessionId || null,
         userId,
-        history: conversationHistory,
         stream: responseStreaming,
         onEvent: (type, payload = {}) => {
           if (type === "run_started" && payload.session_id) {
@@ -452,7 +581,7 @@ export function useWorkspaceChat(userId, responseStreaming, modelName) {
               ...chat,
               sessionIds: {
                 ...(chat.sessionIds || {}),
-                [buildSessionKey(userId, activeAgentId, runtimeMode, modelName)]: payload.session_id,
+                [buildSessionKey(userId, activeAgentId, runtimeMode, modelId)]: payload.session_id,
               },
               updatedAt: Date.now(),
             }));
@@ -526,7 +655,7 @@ export function useWorkspaceChat(userId, responseStreaming, modelName) {
               userId,
               activeAgentId,
               result.mode || runtimeMode,
-              modelName,
+              modelId,
             )]: result.sessionId,
           },
           updatedAt: Date.now(),
@@ -575,7 +704,9 @@ export function useWorkspaceChat(userId, responseStreaming, modelName) {
     initialLoadRetrying,
     isSending,
     loading,
+    onDeleteChat,
     onNewChat,
+    onRenameChat,
     onSelectAgent,
     onSelectChat,
     onSetRuntimeMode,

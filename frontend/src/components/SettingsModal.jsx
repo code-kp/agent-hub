@@ -21,8 +21,10 @@ export function SettingsModal({
   onUserIdChange,
   responseStreaming,
   onResponseStreamingChange,
-  modelName,
-  onModelNameChange,
+  defaultModelId,
+  modelOptions,
+  modelsLoading,
+  onDefaultModelIdChange,
 }) {
   const [activeTab, setActiveTab] = useState("appearance");
   const panelRef = useRef(null);
@@ -70,8 +72,10 @@ export function SettingsModal({
         <ResponseStreamingCard
           enabled={responseStreaming}
           onChange={onResponseStreamingChange}
-          modelName={modelName}
-          onModelNameChange={onModelNameChange}
+          defaultModelId={defaultModelId}
+          modelOptions={modelOptions}
+          modelsLoading={modelsLoading}
+          onDefaultModelIdChange={onDefaultModelIdChange}
         />
       );
     }

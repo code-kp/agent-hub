@@ -544,9 +544,13 @@ time {
   padding-right: 4px;
 }
 
+.chat-item-shell {
+  position: relative;
+}
+
 .chat-item {
   width: 100%;
-  padding: 11px 10px;
+  padding: 11px 40px 11px 10px;
   border-radius: 8px;
   border: 1px solid transparent;
   background: transparent;
@@ -564,6 +568,243 @@ time {
   background: var(--active-surface);
   border-color: var(--active-border);
   box-shadow: var(--active-shadow);
+}
+
+.chat-item-menu-shell {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
+.chat-menu-trigger {
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-soft);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.92);
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease,
+    color 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease;
+}
+
+.chat-menu-trigger svg {
+  width: 13px;
+  height: 13px;
+}
+
+.chat-item-shell:hover .chat-menu-trigger,
+.chat-item-shell:focus-within .chat-menu-trigger,
+.chat-item-menu-shell.open .chat-menu-trigger {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.chat-item-shell.active .chat-menu-trigger {
+  opacity: 0.68;
+  transform: scale(1);
+}
+
+.chat-menu-trigger:hover,
+.chat-menu-trigger:focus-visible,
+.chat-item-menu-shell.open .chat-menu-trigger {
+  color: var(--text);
+  border-color: var(--hover-border);
+  background: var(--hover-surface);
+}
+
+.chat-item-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 138px;
+  padding: 6px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-lg);
+  display: grid;
+  gap: 4px;
+  z-index: 3;
+}
+
+.chat-item-menu-action {
+  width: 100%;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.chat-item-menu-action:hover:not(:disabled),
+.chat-item-menu-action:focus-visible {
+  background: var(--surface-muted);
+}
+
+.chat-item-menu-action.danger {
+  color: var(--danger);
+}
+
+.chat-item-menu-action.danger:hover:not(:disabled),
+.chat-item-menu-action.danger:focus-visible {
+  background: var(--danger-soft);
+}
+
+.chat-item-menu-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.conversation-dialog {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 48;
+}
+
+.conversation-dialog.open {
+  pointer-events: auto;
+}
+
+.conversation-dialog-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: var(--modal-overlay-surface);
+  backdrop-filter: blur(5px);
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+
+.conversation-dialog.open .conversation-dialog-backdrop {
+  opacity: 1;
+}
+
+.conversation-dialog-panel {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(420px, calc(100vw - 28px));
+  transform: translate(-50%, calc(-50% + 8px)) scale(0.98);
+  opacity: 0;
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.conversation-dialog.open .conversation-dialog-panel {
+  opacity: 1;
+  transform: translate(-50%, -50%);
+}
+
+.conversation-dialog-card {
+  padding: 18px;
+  border-radius: 14px;
+  border: 1px solid var(--accent-border);
+  background:
+    radial-gradient(circle at top left, var(--accent-faint), transparent 34%),
+    linear-gradient(180deg, var(--surface-strong) 0%, var(--elevated-surface) 100%);
+  box-shadow: var(--shadow-lg);
+  display: grid;
+  gap: 16px;
+}
+
+.conversation-dialog-copy {
+  display: grid;
+  gap: 8px;
+}
+
+.conversation-dialog-copy h3 {
+  margin: 0;
+  letter-spacing: -0.03em;
+}
+
+.conversation-dialog-copy p {
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.conversation-dialog-field {
+  display: grid;
+  gap: 8px;
+}
+
+.conversation-dialog-field > span {
+  color: var(--text);
+  font-size: 0.79rem;
+  font-weight: 700;
+}
+
+.conversation-dialog-field > input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--input-surface);
+  color: var(--text);
+  outline: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.conversation-dialog-field > input:focus {
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 4px var(--accent-focus-shadow);
+}
+
+.conversation-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.conversation-dialog-button {
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease, opacity 160ms ease;
+}
+
+.conversation-dialog-button.subtle {
+  background: var(--surface-muted);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.conversation-dialog-button.primary {
+  background: var(--primary-button-bg);
+  color: var(--primary-button-text);
+}
+
+.conversation-dialog-button.danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+.conversation-dialog-button:hover:not(:disabled) {
+  opacity: 0.92;
+}
+
+.conversation-dialog-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .chat-item-row,
@@ -1932,6 +2173,75 @@ time {
   box-shadow: 0 0 0 4px var(--accent-focus-shadow);
 }
 
+.settings-select-shell {
+  position: relative;
+  width: 100%;
+  min-height: 46px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 14px 0 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-strong) 96%, white 4%) 0%, var(--input-surface) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 10px 22px rgba(15, 23, 42, 0.04);
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.settings-select-shell:focus-within {
+  border-color: var(--accent-border);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 0 0 4px var(--accent-focus-shadow),
+    0 10px 22px rgba(15, 23, 42, 0.06);
+}
+
+.settings-select-icon {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: color-mix(in srgb, var(--accent) 74%, var(--text-muted));
+}
+
+.settings-select-icon svg,
+.settings-select-chevron svg {
+  width: 100%;
+  height: 100%;
+}
+
+.settings-select-shell > select {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 30px 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.92rem;
+  font-weight: 600;
+  outline: none;
+  cursor: pointer;
+}
+
+.settings-select-chevron {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-soft);
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
 .settings-field > small {
   color: var(--text-soft);
   font-size: 0.76rem;
@@ -2384,6 +2694,109 @@ time {
   font-size: 0.78rem;
 }
 
+.composer-model-select {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted);
+}
+
+.composer-model-label {
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.composer-model-field {
+  position: relative;
+  min-width: 232px;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px 0 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--border) 92%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-strong) 96%, white 4%) 0%, color-mix(in srgb, var(--surface) 94%, transparent) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 8px 18px rgba(15, 23, 42, 0.06);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.composer-model-leading {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: color-mix(in srgb, var(--accent) 74%, var(--text-muted));
+}
+
+.composer-model-leading svg,
+.composer-model-chevron svg {
+  width: 100%;
+  height: 100%;
+}
+
+.composer-model-field select {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 28px 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 600;
+  outline: none;
+  cursor: pointer;
+}
+
+.composer-model-field select:disabled,
+.settings-select-shell > select:disabled {
+  cursor: not-allowed;
+}
+
+.composer-model-chevron {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-soft);
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.composer-model-select:hover:not(.disabled) .composer-model-field {
+  border-color: color-mix(in srgb, var(--accent-border) 72%, var(--border));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 10px 20px rgba(15, 23, 42, 0.08);
+}
+
+.composer-model-select:focus-within .composer-model-field {
+  border-color: var(--accent-border);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 0 0 4px var(--accent-focus-shadow),
+    0 10px 20px rgba(15, 23, 42, 0.08);
+}
+
+.composer-model-select.active .composer-model-field {
+  border-color: color-mix(in srgb, var(--accent-border) 82%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 55%, var(--surface-strong)) 0%, color-mix(in srgb, var(--surface) 94%, transparent) 100%);
+}
+
+.composer-model-select.disabled {
+  opacity: 0.68;
+}
+
 .composer-runtime-toggle {
   position: relative;
   display: inline-flex;
@@ -2674,6 +3087,19 @@ time {
 
   .workspace-meta {
     justify-content: flex-start;
+  }
+
+  .chat-menu-trigger {
+    opacity: 0.72;
+    transform: scale(1);
+  }
+
+  .composer-model-select {
+    width: 100%;
+  }
+
+  .composer-model-field {
+    width: min(100%, 320px);
   }
 
   .sidebar-header-actions {

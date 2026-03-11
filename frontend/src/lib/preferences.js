@@ -2,7 +2,8 @@ export const USER_ID_STORAGE_KEY = "agent-hub-user-id";
 export const DEFAULT_USER_ID = "browser-user";
 export const RESPONSE_STREAMING_STORAGE_KEY = "agent-hub-response-streaming";
 export const DEFAULT_RESPONSE_STREAMING = true;
-export const MODEL_NAME_STORAGE_KEY = "agent-hub-model-name";
+export const DEFAULT_MODEL_ID_STORAGE_KEY = "agent-hub-model-id";
+export const LEGACY_MODEL_NAME_STORAGE_KEY = "agent-hub-model-name";
 
 export function sanitizeUserId(value) {
   const trimmed = String(value || "").trim();
@@ -43,15 +44,15 @@ export function resolveInitialResponseStreaming() {
   return normalizeResponseStreaming(stored);
 }
 
-export function sanitizeModelName(value) {
+export function sanitizeModelId(value) {
   return String(value || "").trim();
 }
 
-export function resolveInitialModelName() {
+export function resolveInitialDefaultModelId() {
   if (typeof window === "undefined") {
     return "";
   }
 
-  const stored = window.localStorage.getItem(MODEL_NAME_STORAGE_KEY);
-  return sanitizeModelName(stored);
+  const stored = window.localStorage.getItem(DEFAULT_MODEL_ID_STORAGE_KEY);
+  return sanitizeModelId(stored);
 }

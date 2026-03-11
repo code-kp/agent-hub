@@ -13,7 +13,12 @@ export function ChatPanel({
   isSending,
   disabled,
   orchestrationAvailable,
+  defaultModelId,
+  modelId,
+  modelOptions,
+  modelsLoading,
   runtimeMode,
+  onModelIdChange,
   onOpenAgentPicker,
   onSetRuntimeMode,
   onSend,
@@ -69,7 +74,12 @@ export function ChatPanel({
             hasAgent={Boolean(agentName || agentId)}
             agentName={agentName || agentId}
             orchestrationAvailable={orchestrationAvailable}
+            defaultModelId={defaultModelId}
+            modelId={modelId}
+            modelOptions={modelOptions}
+            modelsLoading={modelsLoading}
             runtimeMode={runtimeMode}
+            onModelIdChange={onModelIdChange}
             onSetRuntimeMode={onSetRuntimeMode}
             onSend={onSend}
           />

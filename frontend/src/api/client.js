@@ -52,6 +52,56 @@ export async function fetchAgents({ timeoutMs = AGENTS_TIMEOUT_MS } = {}) {
   return payload;
 }
 
+export async function fetchModels({ timeoutMs = AGENTS_TIMEOUT_MS } = {}) {
+  const response = await fetchWithTimeout(`${API_BASE}/api/models`, { timeoutMs });
+  const payload = await readResponsePayload(response);
+
+  if (!response.ok) {
+    throw new Error(payload.detail || payload.message || payload.text || `Failed to load models: ${response.status}`);
+  }
+
+  return payload;
+}
+
+export async function fetchConversations({
+  userId = "browser-user",
+  timeoutMs = AGENTS_TIMEOUT_MS,
+} = {}) {
+  const query = new URLSearchParams({ user_id: userId });
+  const response = await fetchWithTimeout(
+    `${API_BASE}/api/conversations?${query.toString()}`,
+    { timeoutMs },
+  );
+  const payload = await readResponsePayload(response);
+
+  if (!response.ok) {
+    throw new Error(payload.detail || payload.message || payload.text || `Failed to load conversations: ${response.status}`);
+  }
+
+  return payload;
+}
+
+export async function saveConversations({
+  userId = "browser-user",
+  chats = [],
+}) {
+  const response = await fetch(`${API_BASE}/api/conversations`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      user_id: userId,
+      chats,
+    }),
+  });
+
+  const payload = await readResponsePayload(response);
+  if (!response.ok) {
+    throw new Error(payload.detail || payload.message || payload.text || `Failed to save conversations: ${response.status}`);
+  }
+
+  return payload;
+}
+
 export async function fetchHealth({ timeoutMs = HEALTH_TIMEOUT_MS } = {}) {
   try {
     const response = await fetchWithTimeout(`${API_BASE}/api/health`, { timeoutMs });
@@ -114,6 +164,7 @@ export async function uploadSkillFile({
 
 export async function invokeAi({
   agentId,
+  modelId,
   modelName,
   instructions,
   message,
@@ -123,6 +174,7 @@ export async function invokeAi({
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       agent_id: agentId,
+      model_id: modelId,
       model_name: modelName,
       instructions,
       message,
@@ -140,11 +192,12 @@ export async function invokeAi({
 export async function streamChat({
   agentId,
   mode,
+  modelId,
   modelName,
+  conversationId,
   message,
   sessionId,
   userId = "browser-user",
-  history,
   stream = true,
   onEvent,
 }) {
@@ -154,11 +207,12 @@ export async function streamChat({
     body: JSON.stringify({
       agent_id: agentId,
       mode,
+      model_id: modelId,
       model_name: modelName,
+      conversation_id: conversationId,
       message,
       session_id: sessionId,
       user_id: userId,
-      history,
       stream,
     }),
   });

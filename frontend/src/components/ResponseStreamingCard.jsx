@@ -10,10 +10,13 @@ const STREAMING_OPTIONS = [
 export function ResponseStreamingCard({
   enabled,
   onChange,
-  modelName,
-  onModelNameChange,
+  defaultModelId,
+  modelOptions,
+  modelsLoading,
+  onDefaultModelIdChange,
 }) {
-  const modelLabel = modelName || "Default";
+  const selectedDefaultModel = modelOptions.find((item) => item.id === defaultModelId) || null;
+  const modelChipLabel = selectedDefaultModel ? selectedDefaultModel.label : "Backend default";
 
   return (
     <section className="settings-card">
@@ -40,23 +43,56 @@ export function ResponseStreamingCard({
 
       <div className="settings-card-header">
         <div>
-          <h3>Model override</h3>
-          <p>Leave blank to use the agent default or the backend environment default.</p>
+          <h3>Default model</h3>
+          <p>Used whenever the chat model picker is left on its default setting.</p>
         </div>
-        <span className="settings-chip">{modelLabel}</span>
+        <span className="settings-chip">{modelChipLabel}</span>
       </div>
 
       <label className="settings-field">
-        <span>Model name</span>
-        <input
-          type="text"
-          value={modelName}
-          placeholder="gemini-2.0-flash or litellm:openai/gpt-4o-mini"
-          onChange={(event) => onModelNameChange(event.target.value)}
-        />
+        <span>Model</span>
+        <div className="settings-select-shell">
+          <span className="settings-select-icon" aria-hidden="true">
+            <svg viewBox="0 0 16 16">
+              <path
+                d="M8 1.5l1.55 3.16 3.45.5-2.5 2.43.59 3.41L8 9.39 4.91 11l.59-3.41L3 5.16l3.45-.5L8 1.5z"
+                fill="none"
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="1.15"
+              />
+            </svg>
+          </span>
+          <select
+            value={defaultModelId}
+            disabled={modelsLoading}
+            aria-label="Choose default model"
+            onChange={(event) => onDefaultModelIdChange(event.target.value)}
+          >
+            <option value="">Backend default</option>
+            {modelOptions.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+          <span className="settings-select-chevron" aria-hidden="true">
+            <svg viewBox="0 0 16 16">
+              <path
+                d="M4.25 6.25L8 10l3.75-3.75"
+                fill="none"
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="1.5"
+              />
+            </svg>
+          </span>
+        </div>
         <small>
-          Use a native Gemini name like <code>gemini-2.0-flash</code> or a full LiteLLM
-          reference like <code>litellm:openai/gpt-4o-mini</code>.
+          Pick one of the backend-supported models here. The chat composer can still
+          temporarily switch away from this default.
         </small>
       </label>
     </section>
