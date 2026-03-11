@@ -1103,13 +1103,67 @@ time {
   box-shadow: var(--transcript-shadow);
 }
 
+.message-list-shell {
+  min-height: 0;
+  position: relative;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
+}
+
 .message-list {
   min-height: 0;
+  height: 100%;
   overflow: auto;
   display: grid;
   align-content: start;
   gap: 16px;
   padding: 16px 20px 12px;
+}
+
+.scroll-latest-button {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--accent-border);
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-strong) 96%, white 4%) 0%, var(--surface) 100%);
+  color: var(--text);
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.12);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  z-index: 2;
+  animation: scroll-latest-bounce 1.2s ease-in-out infinite;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease, color 160ms ease;
+}
+
+.scroll-latest-button:hover,
+.scroll-latest-button:focus-visible {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
+  background:
+    linear-gradient(180deg, var(--surface-strong) 0%, color-mix(in srgb, var(--surface) 92%, var(--accent-soft)) 100%);
+  box-shadow:
+    0 18px 34px rgba(15, 23, 42, 0.16),
+    0 0 0 4px var(--accent-focus-shadow);
+}
+
+.scroll-latest-button span {
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.scroll-latest-button svg {
+  width: 14px;
+  height: 14px;
+  color: var(--accent);
 }
 
 .message-focus-spacer {
@@ -2995,6 +3049,16 @@ time {
       var(--message-shadow),
       0 0 0 1px color-mix(in srgb, var(--accent-border) 50%, transparent),
       0 18px 40px color-mix(in srgb, var(--accent) 8%, transparent);
+  }
+}
+
+@keyframes scroll-latest-bounce {
+  0%,
+  100% {
+    transform: translateX(-50%) translateY(0);
+  }
+  50% {
+    transform: translateX(-50%) translateY(-4px);
   }
 }
 

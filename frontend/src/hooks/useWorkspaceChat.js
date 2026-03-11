@@ -295,8 +295,6 @@ export function useWorkspaceChat(userId, responseStreaming, modelId) {
       return;
     }
 
-    let hasRemainingQueuedText = false;
-
     setChats((prev) => prev.map((chat) => {
       let messages = null;
 
@@ -317,16 +315,9 @@ export function useWorkspaceChat(userId, responseStreaming, modelId) {
         };
 
         if (queuedText) {
-          const [revealedText, remainingText] = consumeRevealChunk(queuedText);
-          nextMessage.text = `${nextMessage.text}${revealedText}`;
+          nextMessage.text = `${nextMessage.text}${queuedText}`;
           nextMessage.streaming = true;
-
-          if (remainingText) {
-            pendingChunks.set(key, remainingText);
-            hasRemainingQueuedText = true;
-          } else {
-            pendingChunks.delete(key);
-          }
+          pendingChunks.delete(key);
         }
 
         messages[index] = nextMessage;
@@ -342,10 +333,6 @@ export function useWorkspaceChat(userId, responseStreaming, modelId) {
         updatedAt: Date.now(),
       };
     }));
-
-    if (hasRemainingQueuedText) {
-      scheduleAssistantFlush();
-    }
   }, []);
 
   const scheduleAssistantFlush = useCallback(() => {
@@ -718,26 +705,6 @@ export function useWorkspaceChat(userId, responseStreaming, modelId) {
     serviceHealth,
     setSearchText,
   };
-}
-
-function consumeRevealChunk(text, targetLength = 34, maxLength = 72) {
-  const value = String(text || "");
-  if (!value) {
-    return ["", ""];
-  }
-
-  if (value.length <= targetLength) {
-    return [value, ""];
-  }
-
-  const windowEnd = Math.min(value.length, maxLength);
-  const remainderWindow = value.slice(targetLength, windowEnd);
-  const boundaryMatch = remainderWindow.match(/^\S*\s+/);
-  const splitIndex = boundaryMatch
-    ? targetLength + boundaryMatch[0].length
-    : windowEnd;
-
-  return [value.slice(0, splitIndex), value.slice(splitIndex)];
 }
 
 function upsertThinkingEvent(events, nextEvent) {

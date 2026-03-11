@@ -1,29 +1,9 @@
-import React, { useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 
 import { MessageItem } from "./MessageItem";
 
-function getActiveExecutionMessage(messages) {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (message.role === "assistant" && message.thinkingActive) {
-      return message;
-    }
-  }
-
-  return null;
-}
-
-function scrollContainerToAnchor(container, anchor, behavior = "smooth") {
-  const containerRect = container.getBoundingClientRect();
-  const anchorRect = anchor.getBoundingClientRect();
-  const focusOffset = Math.min(112, Math.max(32, container.clientHeight * 0.18));
-  const nextTop = container.scrollTop + (anchorRect.top - containerRect.top) - focusOffset;
-
-  container.scrollTo({
-    top: Math.max(0, nextTop),
-    behavior,
-  });
-}
+const BOTTOM_THRESHOLD_PX = 32;
+const NEW_MESSAGE_TOP_OFFSET_PX = 16;
 
 function scrollContainerToBottom(container, behavior = "smooth") {
   container.scrollTo({
@@ -32,140 +12,79 @@ function scrollContainerToBottom(container, behavior = "smooth") {
   });
 }
 
+function scrollContainerToMessage(container, messageNode, behavior = "smooth") {
+  if (!container || !messageNode) {
+    return;
+  }
+
+  const containerRect = container.getBoundingClientRect();
+  const messageRect = messageNode.getBoundingClientRect();
+  const nextTop = container.scrollTop + (messageRect.top - containerRect.top) - NEW_MESSAGE_TOP_OFFSET_PX;
+
+  container.scrollTo({
+    top: Math.max(0, nextTop),
+    behavior,
+  });
+}
+
+function isScrolledToBottom(container) {
+  if (!container) {
+    return true;
+  }
+
+  const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+  return distanceFromBottom <= BOTTOM_THRESHOLD_PX;
+}
+
+function getLatestUserMessageId(messages) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role === "user") {
+      return messages[index].id || null;
+    }
+  }
+
+  return null;
+}
+
 export function MessageList({ messages, agentName, agentDescription }) {
   const listRef = useRef(null);
-  const initialActiveExecution = getActiveExecutionMessage(messages);
-  const activeExecutionMessage = getActiveExecutionMessage(messages);
-  const previousSnapshotRef = useRef({
-    count: messages.length,
-    lastId: messages[messages.length - 1]?.id || null,
-    lastText: messages[messages.length - 1]?.text || "",
-    lastStreaming: Boolean(messages[messages.length - 1]?.streaming),
-    activeExecutionId: initialActiveExecution?.id || null,
-  });
+  const [showScrollToLatest, setShowScrollToLatest] = useState(false);
+  const previousLatestUserMessageIdRef = useRef(getLatestUserMessageId(messages));
+
+  const syncScrollState = useCallback(() => {
+    setShowScrollToLatest(!isScrolledToBottom(listRef.current));
+  }, []);
 
   useEffect(() => {
     if (!listRef.current) {
       return undefined;
     }
 
-    const lastMessage = messages[messages.length - 1] || null;
-    const snapshot = {
-      count: messages.length,
-      lastId: lastMessage?.id || null,
-      lastText: lastMessage?.text || "",
-      lastStreaming: Boolean(lastMessage?.streaming),
-      activeExecutionId: activeExecutionMessage?.id || null,
-    };
-    const previousSnapshot = previousSnapshotRef.current;
-    const shouldFollowStreamingAnswer =
-      Boolean(activeExecutionMessage)
-      && lastMessage?.id === activeExecutionMessage.id
-      && Boolean(lastMessage?.streaming)
-      && Boolean(lastMessage?.text);
-
-    if (activeExecutionMessage) {
+    const latestUserMessageId = getLatestUserMessageId(messages);
+    const previousLatestUserMessageId = previousLatestUserMessageIdRef.current;
+    const frameId = window.requestAnimationFrame(() => {
       if (
-        shouldFollowStreamingAnswer
-        && snapshot.lastText !== previousSnapshot.lastText
+        latestUserMessageId
+        && latestUserMessageId !== previousLatestUserMessageId
+        && listRef.current
       ) {
-        scrollContainerToBottom(
-          listRef.current,
-          previousSnapshot.lastText ? "auto" : "smooth",
+        const messageNode = listRef.current.querySelector(
+          `[data-message-id="${latestUserMessageId}"]`,
         );
-        previousSnapshotRef.current = snapshot;
-        return undefined;
+
+        if (messageNode) {
+          scrollContainerToMessage(listRef.current, messageNode, "smooth");
+        }
       }
 
-      if (snapshot.activeExecutionId !== previousSnapshot.activeExecutionId) {
-        let settleTimeoutId = 0;
-        const frameId = window.requestAnimationFrame(() => {
-          if (!listRef.current) {
-            return;
-          }
-
-          const focusAnchor = (behavior = "smooth") => {
-            if (!listRef.current) {
-              return;
-            }
-
-            const anchor = listRef.current.querySelector(
-              `[data-message-id="${activeExecutionMessage.id}"] [data-execution-anchor="true"]`,
-            );
-
-            if (anchor) {
-              scrollContainerToAnchor(listRef.current, anchor, behavior);
-            }
-          };
-
-          focusAnchor("smooth");
-          settleTimeoutId = window.setTimeout(() => {
-            focusAnchor("smooth");
-          }, 180);
-        });
-
-        previousSnapshotRef.current = snapshot;
-        return () => {
-          window.cancelAnimationFrame(frameId);
-          window.clearTimeout(settleTimeoutId);
-        };
-      }
-
-      previousSnapshotRef.current = snapshot;
-      return undefined;
-    }
-
-    if (previousSnapshot.activeExecutionId && !snapshot.activeExecutionId) {
-      scrollContainerToBottom(listRef.current, "smooth");
-
-      previousSnapshotRef.current = snapshot;
-      return undefined;
-    }
-
-    const shouldScroll =
-      snapshot.count !== previousSnapshot.count
-      || snapshot.lastId !== previousSnapshot.lastId
-      || (
-        snapshot.lastStreaming
-        && snapshot.lastText !== previousSnapshot.lastText
-      );
-
-    if (shouldScroll) {
-      scrollContainerToBottom(
-        listRef.current,
-        snapshot.count === previousSnapshot.count ? "smooth" : "auto",
-      );
-    }
-
-    previousSnapshotRef.current = snapshot;
-    return undefined;
-  }, [messages]);
-
-  useEffect(() => {
-    if (!listRef.current || typeof ResizeObserver === "undefined") {
-      return undefined;
-    }
-
-    const lastMessage = messages[messages.length - 1] || null;
-    if (!lastMessage || !lastMessage.streaming) {
-      return undefined;
-    }
-
-    const container = listRef.current;
-    const targetNode = container.querySelector(`[data-message-id="${lastMessage.id}"]`);
-    if (!targetNode) {
-      return undefined;
-    }
-
-    const observer = new ResizeObserver(() => {
-      scrollContainerToBottom(container, "auto");
+      syncScrollState();
+      previousLatestUserMessageIdRef.current = latestUserMessageId;
     });
 
-    observer.observe(targetNode);
     return () => {
-      observer.disconnect();
+      window.cancelAnimationFrame(frameId);
     };
-  }, [messages]);
+  }, [messages, syncScrollState]);
 
   if (!messages.length) {
     return (
@@ -181,9 +100,30 @@ export function MessageList({ messages, agentName, agentDescription }) {
   }
 
   return (
-    <div className="message-list" ref={listRef}>
-      {messages.map((message) => <MessageItem key={message.id} message={message} />)}
-      {activeExecutionMessage ? <div className="message-focus-spacer" aria-hidden="true" /> : null}
+    <div className="message-list-shell">
+      <div className="message-list" ref={listRef} onScroll={syncScrollState}>
+        {messages.map((message) => <MessageItem key={message.id} message={message} />)}
+      </div>
+      {showScrollToLatest ? (
+        <button
+          type="button"
+          className="scroll-latest-button"
+          onClick={() => {
+            if (!listRef.current) {
+              return;
+            }
+            scrollContainerToBottom(listRef.current, "smooth");
+          }}
+        >
+          <span>Scroll to latest</span>
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path
+              d="M3.47 6.97a.75.75 0 0 1 1.06 0L8 10.44l3.47-3.47a.75.75 0 1 1 1.06 1.06l-4 4a.75.75 0 0 1-1.06 0l-4-4a.75.75 0 0 1 0-1.06Z"
+              fill="currentColor"
+            />
+          </svg>
+        </button>
+      ) : null}
     </div>
   );
 }
