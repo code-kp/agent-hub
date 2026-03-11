@@ -57,6 +57,29 @@ class _StreamingRunner:
         )
 
 
+class _ThinkingRunner:
+    def __init__(self) -> None:
+        self.last_kwargs = None
+
+    async def run_async(self, **kwargs):
+        self.last_kwargs = kwargs
+        yield _FakeEvent(
+            partial=True,
+            parts=[types.Part(text="Compare the options carefully.", thought=True)],
+        )
+        yield _FakeEvent(partial=True, text="Hello ")
+        yield _FakeEvent(
+            final=True,
+            parts=[
+                types.Part(
+                    text="Compare the options carefully. Keep the reply short.",
+                    thought=True,
+                ),
+                types.Part(text="Hello world"),
+            ],
+        )
+
+
 class _FakeEvent:
     def __init__(
         self,
@@ -64,11 +87,15 @@ class _FakeEvent:
         partial: bool = False,
         final: bool = False,
         text: str = "",
+        parts=None,
         usage_metadata=None,
     ) -> None:
         self.partial = partial
         self._final = final
-        self.content = types.Content(role="model", parts=[types.Part(text=text)])
+        self.content = types.Content(
+            role="model",
+            parts=list(parts or [types.Part(text=text)]),
+        )
         self.author = "test-agent"
         self.id = "event-1"
         self.model_version = "gemini-test"
@@ -156,7 +183,7 @@ class DirectRuntimeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(events[-1]["type"], "run_completed")
         self.assertEqual(
             runtime.runner.last_kwargs["run_config"].streaming_mode,
-            StreamingMode.NONE,
+            StreamingMode.SSE,
         )
 
     async def test_stream_true_emits_deltas_and_deduplicates_final_text(self) -> None:
@@ -193,6 +220,37 @@ class DirectRuntimeTest(unittest.IsolatedAsyncioTestCase):
             runtime.runner.last_kwargs["run_config"].streaming_mode,
             StreamingMode.SSE,
         )
+
+    async def test_model_thoughts_emit_thinking_steps_without_entering_answer_text(self) -> None:
+        runtime = self._build_runtime()
+        runtime.runner = _ThinkingRunner()
+        runtime.agent = SimpleNamespace(name="test-agent")
+        stream = EventStream()
+
+        with patch.dict(os.environ, {"GOOGLE_API_KEY": "test-key"}, clear=False):
+            await runtime._run_chat(
+                stream=stream,
+                message="Hello",
+                user_id="test-user",
+                session_id="session-7",
+                stream_output=False,
+            )
+
+        events = await self._collect_events(stream)
+        model_thought_events = [
+            event
+            for event in events
+            if event["type"] == "thinking_step" and event.get("source") == "model"
+        ]
+        final_message = next(
+            event for event in events if event["type"] == "assistant_message"
+        )
+
+        self.assertGreaterEqual(len(model_thought_events), 2)
+        self.assertEqual(final_message["text"], "Hello world")
+        self.assertNotIn("Compare the options", final_message["text"])
+        self.assertEqual(model_thought_events[-1]["state"], "done")
+        self.assertIn("Keep the reply short.", model_thought_events[-1]["detail"])
 
     async def test_timeout_message_points_to_env_model_override(self) -> None:
         runtime = self._build_runtime()
@@ -238,6 +296,26 @@ class DirectRuntimeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(model_name, "litellm:openai/gpt-4o-mini")
         self.assertEqual(source, "env")
 
+    def test_model_name_prefers_request_override_over_env(self) -> None:
+        runtime = self._build_runtime()
+        runtime.definition = Agent(
+            name="General Assistant",
+            description="Test agent",
+            system_prompt="Test prompt",
+            tools=(),
+            model=None,
+        )
+
+        with patch.dict(
+            os.environ,
+            {"MODEL_NAME": "gemini-2.0-flash", "MODEL_BACKEND": "litellm"},
+            clear=False,
+        ):
+            model_name, source = runtime._resolve_model_name("openai/gpt-4o-mini")
+
+        self.assertEqual(model_name, "litellm:openai/gpt-4o-mini")
+        self.assertEqual(source, "request")
+
     async def test_model_provider_error_is_sanitized_and_not_sent_as_assistant_message(self) -> None:
         runtime = self._build_runtime()
         runtime.runner = _FailingRunner(
@@ -263,6 +341,41 @@ class DirectRuntimeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(error_event["error"], "model_error")
         self.assertIn("Google AI Studio", error_event["message"])
         self.assertNotIn("Traceback", error_event["message"])
+
+    async def test_transient_internal_model_error_retries_once_before_failing(self) -> None:
+        runtime = self._build_runtime()
+        streaming_runner = _StreamingRunner()
+        runtime.runner = _FailingRunner(
+            "500 INTERNAL. {'error': {'code': 500, 'message': 'Internal error encountered.', 'status': 'INTERNAL'}}."
+        )
+        runtime._create_runner = lambda: streaming_runner
+        runtime.agent = SimpleNamespace(name="test-agent")
+        stream = EventStream()
+
+        with patch.dict(os.environ, {"GOOGLE_API_KEY": "test-key"}, clear=False):
+            await runtime._run_chat(
+                stream=stream,
+                message="Hello",
+                user_id="test-user",
+                session_id="session-8",
+                stream_output=True,
+            )
+
+        events = await self._collect_events(stream)
+        event_types = [event["type"] for event in events]
+        retry_event = next(
+            event
+            for event in events
+            if event["type"] == "thinking_step"
+            and event["label"] == "Retrying after a model error"
+        )
+        final_message = next(
+            event for event in events if event["type"] == "assistant_message"
+        )
+
+        self.assertNotIn("error", event_types)
+        self.assertIn("temporary internal error", retry_event["detail"])
+        self.assertEqual(final_message["text"], "Hello world")
 
     def _build_runtime(self) -> DirectAgentRuntime:
         runtime = object.__new__(DirectAgentRuntime)
@@ -318,6 +431,7 @@ class DirectRuntimeTest(unittest.IsolatedAsyncioTestCase):
             "conversation_memory_test",
             default=MemorySnapshot(),
         )
+        runtime._create_runner = lambda: runtime.runner
         return runtime
 
     async def _collect_events(self, stream: EventStream):

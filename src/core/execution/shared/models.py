@@ -88,6 +88,25 @@ def describe_model_error(exc: Exception, *, model_reference: str) -> str:
     return raw_error or "The model request failed."
 
 
+def should_retry_model_error(exc: Exception) -> bool:
+    raw_error = " ".join(str(exc or "").split()).strip().lower()
+    if not raw_error:
+        return False
+
+    retry_markers = (
+        '"code": 500',
+        "'code': 500",
+        " 500 internal",
+        "status': 'internal'",
+        'status": "internal"',
+        "internal error encountered",
+        "service unavailable",
+        "temporarily unavailable",
+        "upstream connect error",
+    )
+    return any(marker in raw_error for marker in retry_markers)
+
+
 def _build_litellm_adapter(litellm_cls: Any, provider_model: str) -> Any:
     with warnings.catch_warnings():
         warnings.filterwarnings(

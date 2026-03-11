@@ -34,7 +34,7 @@ class AiServiceTest(unittest.IsolatedAsyncioTestCase):
     async def test_generate_text_uses_adk_runner(self) -> None:
         runtime = mock.Mock(model_name="gemini-2.0-flash")
         platform = mock.Mock()
-        platform.resolve_runtime.return_value = ("general", runtime)
+        platform.resolve_runtime.return_value = ("general", "direct", runtime)
         service = AiService(platform)
 
         async def fake_events():
@@ -62,12 +62,17 @@ class AiServiceTest(unittest.IsolatedAsyncioTestCase):
                         ):
                             result = await service.generate_text(
                                 agent_id="general",
+                                model_name="gemini-2.0-flash",
                                 instructions="Generate a title.",
                                 message="user: how do I reset billing password?",
                             )
 
         create_agent.assert_called_once()
         create_runner.assert_called_once()
+        platform.resolve_runtime.assert_called_once_with(
+            "general",
+            model_name="gemini-2.0-flash",
+        )
         self.assertEqual(result, "Billing Password Reset")
 
     async def test_generate_text_rejects_missing_key(self) -> None:

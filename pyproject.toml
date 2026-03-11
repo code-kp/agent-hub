@@ -24,17 +24,20 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools]
 py-modules = ["api", "server"]
 
+[tool.setuptools.package-dir]
+"" = "src"
+
 [tool.setuptools.packages.find]
-where = ["."]
-include = ["core*", "workspace*"]
+where = ["src"]
+include = ["core*", "workspace*", "services*"]
 exclude = ["frontend*", "tests*"]
 namespaces = true
 
 [tool.poe.tasks]
-backend = "uvicorn server:app --reload --reload-dir . --reload-include '*.py' --reload-exclude 'frontend/*' --reload-exclude '.venv/*' --reload-exclude '*/.venv/*' --reload-exclude 'venv/*' --reload-exclude '*/venv/*' --reload-exclude '*site-packages/*' --reload-exclude '__pycache__/*' --host 127.0.0.1 --port 8000"
+backend = "uvicorn server:app --app-dir src --reload --reload-dir src --reload-dir tests --reload-dir scripts --reload-include '*.py' --reload-exclude 'frontend/*' --reload-exclude '.venv/*' --reload-exclude '*/.venv/*' --reload-exclude 'venv/*' --reload-exclude '*/venv/*' --reload-exclude '*site-packages/*' --reload-exclude '__pycache__/*' --host 127.0.0.1 --port 8000"
 frontend-install = "npm --prefix frontend install"
 frontend = "npm --prefix frontend run dev -- --host 127.0.0.1 --port 3000"
-install-related-tests-extension = "uv run python scripts/install_related_tests_extension.py"
+install-tests-ext = "uv run python scripts/install_related_tests_extension.py"
 format = "ruff format ."
 test = "uv run python -m pytest"
 stop = "uv run python scripts/dev_supervisor.py stop"

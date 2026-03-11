@@ -32,6 +32,7 @@ class Agent:
     knowledge: Sequence[str] = ()
     model: Optional[str] = None
     runtime_mode: str = "direct"
+    orchestration_configured: bool = False
     execution: contracts_execution.ExecutionConfig = field(
         default_factory=lambda: contracts_execution.DEFAULT_EXECUTION_CONFIG
     )
@@ -66,17 +67,21 @@ class AgentModule:
     core_toolsets: Sequence[str] = ()
     model: Optional[str] = None
     runtime_mode: str = "direct"
-    execution: contracts_execution.ExecutionConfig = (
-        contracts_execution.DEFAULT_EXECUTION_CONFIG
-    )
+    execution: contracts_execution.ExecutionConfig | None = None
     memory: contracts_memory.MemoryConfig = contracts_memory.DEFAULT_MEMORY_CONFIG
     hooks: contracts_hooks.AgentHooks = contracts_hooks.DEFAULT_AGENT_HOOKS
 
 
-class OrchestratedAgentModule(AgentModule):
-    """Class-based authoring surface for explicit plan-execute-replan-verify agents."""
-
-    runtime_mode: str = "orchestrated"
+def normalize_runtime_mode(value: str | None) -> str:
+    normalized_runtime_mode = str(value or "direct").strip().lower()
+    if normalized_runtime_mode not in VALID_RUNTIME_MODES:
+        raise ValueError(
+            "Unsupported runtime_mode: {value}. Expected one of: {allowed}.".format(
+                value=value,
+                allowed=", ".join(VALID_RUNTIME_MODES),
+            )
+        )
+    return normalized_runtime_mode
 
 
 def define_agent(
@@ -95,13 +100,10 @@ def define_agent(
     memory: Optional[contracts_memory.MemoryConfig] = None,
     hooks: Optional[contracts_hooks.AgentHooks] = None,
 ) -> Agent:
-    normalized_runtime_mode = str(runtime_mode or "direct").strip().lower()
-    if normalized_runtime_mode not in VALID_RUNTIME_MODES:
+    normalized_runtime_mode = normalize_runtime_mode(runtime_mode)
+    if normalized_runtime_mode == "orchestrated" and execution is None:
         raise ValueError(
-            "Unsupported runtime_mode: {value}. Expected one of: {allowed}.".format(
-                value=runtime_mode,
-                allowed=", ".join(VALID_RUNTIME_MODES),
-            )
+            "orchestrated runtime requires an explicit execution config."
         )
     return Agent(
         name=name,
@@ -116,6 +118,7 @@ def define_agent(
         knowledge=contracts_skills.ensure_skill_ids(knowledge),
         model=model,
         runtime_mode=normalized_runtime_mode,
+        orchestration_configured=execution is not None,
         execution=contracts_execution.ensure_execution_config(execution),
         memory=contracts_memory.ensure_memory_config(memory),
         hooks=contracts_hooks.ensure_agent_hooks(hooks),
@@ -140,6 +143,8 @@ def agent_from_class(agent_cls: Type[AgentModule]) -> Agent:
             )
         )
 
+    execution_value, execution_defined = _resolve_class_execution(agent_cls)
+
     return define_agent(
         name=agent_cls.name,
         description=getattr(agent_cls, "description", "") or agent_cls.name,
@@ -151,9 +156,7 @@ def agent_from_class(agent_cls: Type[AgentModule]) -> Agent:
         core_toolsets=getattr(agent_cls, "core_toolsets", ()),
         model=getattr(agent_cls, "model", None),
         runtime_mode=getattr(agent_cls, "runtime_mode", "direct"),
-        execution=getattr(
-            agent_cls, "execution", contracts_execution.DEFAULT_EXECUTION_CONFIG
-        ),
+        execution=execution_value if execution_defined else None,
         memory=getattr(agent_cls, "memory", contracts_memory.DEFAULT_MEMORY_CONFIG),
         hooks=getattr(agent_cls, "hooks", contracts_hooks.DEFAULT_AGENT_HOOKS),
     )
@@ -166,7 +169,14 @@ def register_agent_class(agent_cls: Type[AgentModule]) -> Type[AgentModule]:
     return agent_cls
 
 
-def register_orchestrated_agent_class(
-    agent_cls: Type[OrchestratedAgentModule],
-) -> Type[OrchestratedAgentModule]:
-    return register_agent_class(agent_cls)
+def _resolve_class_execution(
+    agent_cls: Type[AgentModule],
+) -> tuple[contracts_execution.ExecutionConfig | None, bool]:
+    for base in agent_cls.__mro__:
+        if "execution" not in base.__dict__:
+            continue
+        value = base.__dict__["execution"]
+        if base is AgentModule:
+            return value, False
+        return value, True
+    return None, False

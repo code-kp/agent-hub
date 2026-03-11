@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import os
 import re
-from typing import Any
 from uuid import uuid4
 
 from google.adk.sessions import InMemorySessionService
@@ -42,6 +41,7 @@ class AiService:
         self,
         *,
         agent_id: str | None,
+        model_name: str | None = None,
         instructions: str,
         message: str,
         timeout_seconds: float = AI_TIMEOUT_SECONDS,
@@ -55,7 +55,10 @@ class AiService:
         if not os.getenv("GOOGLE_API_KEY"):
             raise AiServiceError("Google API key is not configured.")
 
-        resolved_agent_id, runtime = self.platform.resolve_runtime(agent_id)
+        resolved_agent_id, _, runtime = self.platform.resolve_runtime(
+            agent_id,
+            model_name=model_name,
+        )
         model_name = str(getattr(runtime, "model_name", "") or "").strip()
         if not model_name:
             raise AiServiceError("Could not resolve a model for the AI request.")

@@ -26,13 +26,15 @@ class AgentApiTest(unittest.IsolatedAsyncioTestCase):
 
         platform = mock.Mock()
         platform.stream_chat = mock.AsyncMock(
-            return_value=("web.answer", "session-1", fake_stream())
+            return_value=("web.answer", "orchestrated", "session-1", fake_stream())
         )
         api = AgentApi(platform)
 
-        _, _, events_iter = await api.stream_chat_events(
+        _, mode, _, events_iter = await api.stream_chat_events(
             message="hello",
             agent_id="web.answer",
+            mode="orchestrated",
+            model_name="gemini-2.0-flash",
             user_id="api-user",
             session_id="session-1",
             stream=False,
@@ -41,11 +43,14 @@ class AgentApiTest(unittest.IsolatedAsyncioTestCase):
 
         platform.stream_chat.assert_awaited_once_with(
             agent_id="web.answer",
+            mode="orchestrated",
+            model_name="gemini-2.0-flash",
             message="hello",
             user_id="api-user",
             session_id="session-1",
             stream=False,
         )
+        self.assertEqual(mode, "orchestrated")
         self.assertEqual(events[0]["type"], "assistant_message")
 
 

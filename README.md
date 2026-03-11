@@ -2,7 +2,7 @@
 
 Framework-style platform for creating and running custom agents with:
 
-- strict separation of `core/` platform runtime and `workspace/` creator content
+- strict separation of `src/core/` platform runtime and `src/workspace/` creator content
 - one shared workspace for agents, tools, and skills
 - class-based agent authoring API
 - folder-based skill discovery with explicit behavior/knowledge assignment
@@ -12,31 +12,32 @@ Framework-style platform for creating and running custom agents with:
 
 ## Documentation
 
-- [Core architecture](./core/README.md)
+- [Core architecture](./src/core/README.md)
   - what each core module does
   - where discovery, runtime, execution guardrails, skill resolution, and streaming logic belong
-- [Workspace authoring](./workspace/README.md)
+- [Workspace authoring](./src/workspace/README.md)
   - how to define agents, tools, and skills in the shared workspace
 
 ## Structure
 
 ```text
-core/
-  contracts/
-  builtin_tools/
-  execution/
-  skills/
-  stream/
-  guardrails.py
-  discovery.py
-  platform.py
-  registry.py
-workspace/
-  agents/               # agent modules; directories become namespaces
-  tools/                # shared tool modules; loaded before agents
-  skills/               # shared markdown skills
-api.py
-server.py
+src/
+  core/
+    contracts/
+    builtin_tools/
+    execution/
+    skills/
+    stream/
+    guardrails.py
+    discovery.py
+    platform.py
+    registry.py
+  workspace/
+    agents/             # agent modules; directories become namespaces
+    tools/              # shared tool modules; loaded before agents
+    skills/             # shared markdown skills
+  api.py
+  server.py
 frontend/
 ```
 
@@ -71,18 +72,18 @@ Open [http://127.0.0.1:3000](http://127.0.0.1:3000)
 - `uv run poe frontend`
 - `uv run poe dev`
 - `uv run poe stop`
-- `uv run poe install-related-tests-extension`
+- `uv run poe install-tests-ext`
 
 ## Authoring Agents
 
 Create agent modules under:
 
-- `workspace/agents/...`
+- `src/workspace/agents/...`
 
-Directories under `workspace/agents/` are namespaces. For example:
+Directories under `src/workspace/agents/` are namespaces. For example:
 
-- `workspace/agents/general.py` -> agent id `general`
-- `workspace/agents/support/triage.py` -> agent id `support.triage`
+- `src/workspace/agents/general.py` -> agent id `general`
+- `src/workspace/agents/support/triage.py` -> agent id `support.triage`
 
 Example:
 
@@ -116,6 +117,8 @@ Best practice:
 - use `memory` when you want compact follow-up context with lower token growth
 - rely on implicit framework tools like `search_skills` instead of listing them on every agent
 - let the model decide whether tools are needed; use `execution` only for guardrails like tool-call budgets
+- set `execution` when the agent should be eligible for orchestrated runtime; callers can then pass `mode="orchestrated"` or use the UI toggle
+- use `runtime_mode` only to choose the default runtime when callers do not pass `mode`
 - use `hooks` for agent-specific prompt additions or final response shaping instead of pushing those behaviors into `core`
 
 Environment overrides:
@@ -123,25 +126,28 @@ Environment overrides:
 - `MODEL_NAME=openai/gpt-4o-mini` with `MODEL_BACKEND=litellm` uses LiteLLM through ADK
 - `MODEL_NAME=litellm:openai/gpt-4o-mini` also works
 
-If you want the framework to drive an explicit `plan -> execute -> replan -> verify` loop, use `OrchestratedAgentModule` instead:
+If you want the framework to default to an explicit `plan -> execute -> replan -> verify` loop when callers omit `mode`, set `runtime_mode = "orchestrated"` on a normal agent and provide an explicit `ExecutionConfig`:
 
 ```python
-from core.contracts.agent import OrchestratedAgentModule, register_orchestrated_agent_class
+from core.contracts.agent import AgentModule, register_agent_class
 from core.contracts.execution import ExecutionConfig
 
 
-@register_orchestrated_agent_class
-class ResearchAgent(OrchestratedAgentModule):
+@register_agent_class
+class ResearchAgent(AgentModule):
     name = "Research Agent"
     description = "Plans, executes, replans, and verifies before answering."
     system_prompt = "Answer thoroughly and verify important claims."
+    runtime_mode = "orchestrated"
     tools = ("get_current_utc_time", "search_web", "fetch_web_page")
     execution = ExecutionConfig(max_tool_calls=8, max_replans=3, max_verification_rounds=2)
 ```
 
+`/api/chat/stream` accepts an optional `mode` field with `direct` or `orchestrated`. If omitted, the agent's `runtime_mode` is used as the default.
+
 ## Authoring Tools
 
-Put tools under `workspace/tools/...` and define them as `ToolModule` classes.
+Put tools under `src/workspace/tools/...` and define them as `ToolModule` classes.
 All tools are loaded before agents, so any agent can reference any tool by name.
 
 Example:
@@ -183,13 +189,13 @@ Put markdown skills under one of these folders:
 
 Examples:
 
-- `workspace/skills/behavior/general/persona.md`
-- `workspace/skills/knowledge/support/triage.md`
+- `src/workspace/skills/behavior/general/persona.md`
+- `src/workspace/skills/knowledge/support/triage.md`
 
-Skill ids come from the directory hierarchy under `workspace/skills/`:
+Skill ids come from the directory hierarchy under `src/workspace/skills/`:
 
-- `workspace/skills/behavior/general/persona.md` -> `general.persona`
-- `workspace/skills/knowledge/support/triage.md` -> `support.triage`
+- `src/workspace/skills/behavior/general/persona.md` -> `general.persona`
+- `src/workspace/skills/knowledge/support/triage.md` -> `support.triage`
 
 There are only two user-facing skill classes:
 
@@ -201,9 +207,9 @@ There are only two user-facing skill classes:
 Keep troubleshooting replies concrete and operational.
 ```
 
-- `workspace/skills/behavior/...`
+- `src/workspace/skills/behavior/...`
   - always-on behavior shaping
-- `workspace/skills/knowledge/...`
+- `src/workspace/skills/knowledge/...`
   - retrievable knowledge and reference content
 
 Within `behavior`, two common patterns are:
@@ -246,7 +252,7 @@ curl -X POST http://127.0.0.1:8000/api/skills/upload \
   -F "namespace=billing"
 ```
 
-Uploaded files are stored under `workspace/skills/uploads/...` and are treated as knowledge skills.
+Uploaded files are stored under `src/workspace/skills/uploads/...` and are treated as knowledge skills.
 
 That is the recommended default:
 
@@ -274,26 +280,26 @@ support_skill = Register.get(SkillDefinition, "support.triage")
 
 Discovery is separate from registry:
 
-- `core/discovery.py` loads skill files from `workspace/skills/` and modules from `workspace/tools/` and `workspace/agents/`
-- skill ids come from the file path under `workspace/skills/`
-- agent ids come from the module path under `workspace/agents/`
+- `src/core/discovery.py` loads skill files from `src/workspace/skills/` and modules from `src/workspace/tools/` and `src/workspace/agents/`
+- skill ids come from the file path under `src/workspace/skills/`
+- agent ids come from the module path under `src/workspace/agents/`
 - tool modules are loaded first so agent definitions can reference shared tools by name
-- `core/platform.py` refreshes discovery, updates registry, and rebuilds runtimes as needed
-- `core/registry.py` remains a pure typed registry
+- `src/core/platform.py` refreshes discovery, updates registry, and rebuilds runtimes as needed
+- `src/core/registry.py` remains a pure typed registry
 
-For the full platform breakdown, use [core/README.md](./core/README.md).
+For the full platform breakdown, use [src/core/README.md](./src/core/README.md).
 
 ## API Entrypoint
 
-`api.py` is the local interaction entrypoint for agents (programmatic + CLI).
+`src/api.py` is the local interaction entrypoint for agents (programmatic + CLI).
 
 CLI examples:
 
 ```bash
-python3 -m api list
-python3 -m api catalog
-python3 -m api chat "summarize the refund policy"
-python3 -m api repl
+python3 src/api.py list
+python3 src/api.py catalog
+python3 src/api.py chat "summarize the refund policy"
+python3 src/api.py repl
 ```
 
 Programmatic examples:
@@ -354,7 +360,7 @@ Switch editors to change the displayed module. To refresh the active source item
 To install the local VS Code extension source into your user extensions directory:
 
 ```bash
-uv run poe install-related-tests-extension
+uv run poe install-tests-ext
 ```
 
 The extension source lives in [`vscode-related-tests/`](./vscode-related-tests), and its metadata helper lives in [`vscode-related-tests/python/related_tests_metadata.py`](./vscode-related-tests/python/related_tests_metadata.py).

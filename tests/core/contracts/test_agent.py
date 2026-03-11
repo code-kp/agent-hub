@@ -1,6 +1,7 @@
 import unittest
 
-from core.contracts.agent import OrchestratedAgentModule, agent_from_class, define_agent
+from core.contracts.agent import AgentModule, agent_from_class, define_agent
+from core.contracts.execution import ExecutionConfig
 from core.contracts.memory import DISABLED_MEMORY_CONFIG
 from core.contracts.tools import (
     ToolDefinition,
@@ -74,16 +75,52 @@ class AgentContractsTest(unittest.TestCase):
             ["explicit_ping"],
         )
 
-    def test_orchestrated_agent_class_sets_orchestrated_runtime_mode(self) -> None:
-        class OrchestratedExample(OrchestratedAgentModule):
+    def test_agent_class_can_default_to_orchestrated_runtime_mode(self) -> None:
+        class OrchestratedExample(AgentModule):
             name = "Orchestrated Example"
             description = "Runs the explicit controller loop."
             system_prompt = "Answer clearly."
+            runtime_mode = "orchestrated"
             tools = ("explicit_ping",)
+            execution = ExecutionConfig(max_tool_calls=6)
 
         definition = agent_from_class(OrchestratedExample)
 
         self.assertEqual(definition.runtime_mode, "orchestrated")
+        self.assertTrue(definition.orchestration_configured)
+
+    def test_direct_agent_without_execution_does_not_opt_into_orchestration(
+        self,
+    ) -> None:
+        agent = define_agent(
+            name="Direct Only Agent",
+            description="Uses default direct runtime settings.",
+            system_prompt="Answer clearly.",
+            tools=("explicit_ping",),
+        )
+
+        self.assertFalse(agent.orchestration_configured)
+
+    def test_explicit_execution_config_enables_orchestration_capability(self) -> None:
+        agent = define_agent(
+            name="Execution Configured Agent",
+            description="Opts into orchestrated runtime support.",
+            system_prompt="Answer clearly.",
+            tools=("explicit_ping",),
+            execution=ExecutionConfig(max_tool_calls=6),
+        )
+
+        self.assertTrue(agent.orchestration_configured)
+
+    def test_orchestrated_runtime_requires_execution_config(self) -> None:
+        with self.assertRaises(ValueError):
+            define_agent(
+                name="Invalid Orchestrated Agent",
+                description="Missing explicit execution config.",
+                system_prompt="Answer clearly.",
+                tools=("explicit_ping",),
+                runtime_mode="orchestrated",
+            )
 
     def test_agent_can_disable_memory(self) -> None:
         agent = define_agent(
@@ -110,7 +147,7 @@ class AgentContractsTest(unittest.TestCase):
         self.assertEqual(agent.knowledge, ("support.triage", "general.product"))
 
     def test_class_surface_supports_behavior_and_knowledge(self) -> None:
-        class AliasAgent(OrchestratedAgentModule):
+        class AliasAgent(AgentModule):
             name = "Alias Example"
             description = "Uses shorter skill aliases."
             system_prompt = "Answer clearly."

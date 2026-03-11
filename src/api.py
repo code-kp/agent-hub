@@ -22,6 +22,7 @@ WORKSPACE_ROOT = ROOT / "workspace"
 @dataclass(frozen=True)
 class ChatResult:
     agent_id: str
+    mode: str
     session_id: str
     text: str
     events: List[Dict[str, Any]]
@@ -69,7 +70,7 @@ class AgentApi:
     def catalog(self) -> Dict[str, Any]:
         return self.platform.catalog()
 
-    def list_agents(self) -> List[Dict[str, str]]:
+    def list_agents(self) -> List[Dict[str, Any]]:
         return self.platform.list_agents()
 
     def agent_tree(self) -> List[Dict[str, Any]]:
@@ -95,16 +96,21 @@ class AgentApi:
         *,
         message: str,
         agent_id: Optional[str] = None,
+        mode: Optional[str] = None,
+        model_name: Optional[str] = None,
         user_id: str = "api-user",
         session_id: Optional[str] = None,
         stream: bool = True,
-    ) -> Tuple[str, str, AsyncIterator[Dict[str, Any]]]:
+    ) -> Tuple[str, str, str, AsyncIterator[Dict[str, Any]]]:
         (
             resolved_agent_id,
+            resolved_mode,
             next_session_id,
             raw_stream,
         ) = await self.platform.stream_chat(
             agent_id=agent_id,
+            mode=mode,
+            model_name=model_name,
             message=message,
             user_id=user_id,
             session_id=session_id,
@@ -117,20 +123,24 @@ class AgentApi:
                 if parsed is not None:
                     yield parsed
 
-        return resolved_agent_id, next_session_id, iterate_events()
+        return resolved_agent_id, resolved_mode, next_session_id, iterate_events()
 
     async def chat(
         self,
         *,
         message: str,
         agent_id: Optional[str] = None,
+        mode: Optional[str] = None,
+        model_name: Optional[str] = None,
         user_id: str = "api-user",
         session_id: Optional[str] = None,
         stream: bool = True,
     ) -> ChatResult:
-        resolved_agent_id, next_session_id, events_iter = await self.stream_chat_events(
+        resolved_agent_id, resolved_mode, next_session_id, events_iter = await self.stream_chat_events(
             message=message,
             agent_id=agent_id,
+            mode=mode,
+            model_name=model_name,
             user_id=user_id,
             session_id=session_id,
             stream=stream,
@@ -156,6 +166,7 @@ class AgentApi:
 
         return ChatResult(
             agent_id=resolved_agent_id,
+            mode=resolved_mode,
             session_id=next_session_id,
             text=final_text,
             events=events,
@@ -173,12 +184,22 @@ def _print_agents(agents: Iterable[Dict[str, str]]) -> None:
         )
 
 
-async def _run_repl(api: AgentApi, agent_id: Optional[str], user_id: str) -> None:
+async def _run_repl(
+    api: AgentApi,
+    agent_id: Optional[str],
+    user_id: str,
+    mode: Optional[str],
+    model_name: Optional[str],
+) -> None:
     selected_agent = agent_id or api.default_agent_id()
+    selected_mode = mode
+    selected_model_name = model_name
     session_id: Optional[str] = None
 
     print("Agent API REPL")
     print("Using agent:", selected_agent)
+    print("Mode:", selected_mode or "default")
+    print("Model:", selected_model_name or "default")
     print("Type /exit to quit, /agents to list discovered agents.")
 
     while True:
@@ -202,19 +223,35 @@ async def _run_repl(api: AgentApi, agent_id: Optional[str], user_id: str) -> Non
                 session_id = None
                 print("Switched agent to:", selected_agent)
             continue
+        if message.startswith("/mode "):
+            next_mode = message.split(" ", 1)[1].strip()
+            if next_mode:
+                selected_mode = next_mode
+                session_id = None
+                print("Switched mode to:", selected_mode)
+            continue
+        if message.startswith("/model "):
+            next_model_name = message.split(" ", 1)[1].strip()
+            selected_model_name = next_model_name or None
+            session_id = None
+            print("Switched model to:", selected_model_name or "default")
+            continue
 
         try:
-            resolved_agent, next_session_id, events = await api.stream_chat_events(
+            resolved_agent, resolved_mode, next_session_id, events = await api.stream_chat_events(
                 agent_id=selected_agent,
+                mode=selected_mode,
+                model_name=selected_model_name,
                 message=message,
                 user_id=user_id,
                 session_id=session_id,
             )
-        except KeyError as exc:
+        except (KeyError, ValueError) as exc:
             print("error>", str(exc))
             continue
 
         selected_agent = resolved_agent
+        selected_mode = resolved_mode
         session_id = next_session_id
 
         printed_inline = False
@@ -254,6 +291,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "--user-id", default="cli-user", help="User identifier for session tracking."
     )
     parser.add_argument("--agent-id", default=None, help="Specific agent id to use.")
+    parser.add_argument(
+        "--mode",
+        default=None,
+        help="Runtime mode to use for the selected agent (direct or orchestrated).",
+    )
+    parser.add_argument(
+        "--model-name",
+        default=None,
+        help="Model name override for the request or session.",
+    )
 
     subparsers = parser.add_subparsers(dest="command")
 
@@ -281,6 +328,8 @@ async def _run_cli(args: argparse.Namespace) -> int:
     if args.command == "chat":
         result = await api.chat(
             agent_id=args.agent_id,
+            mode=args.mode,
+            model_name=args.model_name,
             message=args.message,
             user_id=args.user_id,
             session_id=None,
@@ -288,7 +337,13 @@ async def _run_cli(args: argparse.Namespace) -> int:
         print(result.text)
         return 0
 
-    await _run_repl(api, agent_id=args.agent_id, user_id=args.user_id)
+    await _run_repl(
+        api,
+        agent_id=args.agent_id,
+        user_id=args.user_id,
+        mode=args.mode,
+        model_name=args.model_name,
+    )
     return 0
 
 

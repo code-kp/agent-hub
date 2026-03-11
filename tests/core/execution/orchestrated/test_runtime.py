@@ -6,9 +6,9 @@ from core.platform import AgentPlatform
 
 
 class OrchestratedRuntimeTest(unittest.TestCase):
-    def test_web_research_uses_orchestrated_runtime(self) -> None:
-        platform = AgentPlatform(Path("workspace"))
-        runtime = platform._runtimes["web.research"]
+    def test_web_answer_uses_orchestrated_runtime_when_requested(self) -> None:
+        platform = AgentPlatform(Path("src/workspace"))
+        _, _, runtime = platform.resolve_runtime("web.answer", mode="orchestrated")
 
         self.assertIsInstance(runtime, OrchestratedAgentRuntime)
 

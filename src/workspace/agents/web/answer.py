@@ -6,6 +6,7 @@ Tests:
 from __future__ import annotations
 
 from core.contracts.agent import AgentModule, register_agent_class
+from core.contracts.execution import ExecutionConfig
 from workspace.agents.web.hooks import WebCitationHooks
 
 
@@ -27,5 +28,11 @@ class WebAnswer(AgentModule):
         "get_current_utc_time",
         "search_web",
         "fetch_web_page",
+    )
+    execution = ExecutionConfig(
+        max_tool_calls=8,
+        max_calls_per_tool=3,
+        max_replans=3,
+        max_verification_rounds=2,
     )
     hooks = WebCitationHooks()

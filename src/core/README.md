@@ -1,8 +1,8 @@
 # Core Architecture
 
-`core/` is the platform runtime. It should stay implementation-focused and stable.
+`src/core/` is the platform runtime. It should stay implementation-focused and stable.
 
-Use `workspace/` to add agents, tools, and skills. Use `core/` to change how the platform discovers, resolves, streams, and executes them.
+Use `src/workspace/` to add agents, tools, and skills. Use `src/core/` to change how the platform discovers, resolves, streams, and executes them.
 
 ## Package Map
 
@@ -38,11 +38,11 @@ Framework-provided shared tools.
 
 - `skills.py`
   - Registers built-in skill-library tools such as `search_skills`
-  - These tools are available to agents without each author defining them in `workspace/tools/`
+  - These tools are available to agents without each author defining them in `src/workspace/tools/`
 
 Rule:
 - Put truly framework-wide tools here
-- Do not duplicate them in `workspace/tools/`
+- Do not duplicate them in `src/workspace/tools/`
 
 ### `core/skills/`
 
@@ -95,14 +95,14 @@ Rule:
 ### `core/discovery.py`
 
 Runtime discovery for:
-- `workspace/tools`
-- `workspace/agents`
-- `workspace/skills`
+- `src/workspace/tools`
+- `src/workspace/agents`
+- `src/workspace/skills`
 
 Responsibilities:
 - load tool modules before agents
-- derive agent ids from the `workspace/agents` module path
-- derive skill ids from the `workspace/skills` path
+- derive agent ids from the `src/workspace/agents` module path
+- derive skill ids from the `src/workspace/skills` path
 - register discovered skills and prepare discovered agent records
 
 ### `core/platform.py`
@@ -240,13 +240,14 @@ Examples:
 
 Recommended:
 - use `AgentModule` for simple direct tool-calling agents
-- use `OrchestratedAgentModule` when you want the framework to run an explicit `plan -> execute -> replan -> verify` loop
+- set `runtime_mode = "orchestrated"` on `AgentModule` when you want the framework to default to an explicit `plan -> execute -> replan -> verify` loop
 - keep the system prompt focused on behavior, not retrieval plumbing
 - list only explicit tools by name
 - use `behavior` for always-on behavior shaping
 - use `knowledge` for retrievable reference material
 - use `memory` when you want compact follow-up context without replaying the full transcript
 - let the model plan tool usage; use `ExecutionConfig` only for tool-loop limits and guardrails
+- set `ExecutionConfig` when the agent should support the orchestrated runtime in UI and API mode selection
 - use `hooks` when one agent family needs custom prompt guidance or final response shaping that should not live in `core`
 
 Example:
@@ -327,22 +328,22 @@ Implicit framework tools:
 - tool planning is model-driven; the framework only enforces budgets and repetition limits
 
 Agent interfaces:
-- `AgentModule`: direct ADK agent runtime; the model decides tool calls directly
-- `OrchestratedAgentModule`: ADK custom-controller runtime; the framework runs planner, executor, replanner, and verifier sub-agents for you
+- `AgentModule`: single authoring surface; runtime selection is request-driven, and `runtime_mode` only picks the default when callers omit `mode`
 - `MemoryConfig`: compact rolling memory; the framework keeps a summary plus a few recent turns instead of replaying the full transcript
 
 Orchestrated example:
 
 ```python
-from core.contracts.agent import OrchestratedAgentModule, register_orchestrated_agent_class
+from core.contracts.agent import AgentModule, register_agent_class
 from core.contracts.execution import ExecutionConfig
 
 
-@register_orchestrated_agent_class
-class WebResearch(OrchestratedAgentModule):
-    name = "Web Research"
+@register_agent_class
+class ResearchAgent(AgentModule):
+    name = "Research Agent"
     description = "Plans, researches, verifies, and answers using public web sources."
     system_prompt = "Answer thoroughly, verify important claims, and cite external evidence inline."
+    runtime_mode = "orchestrated"
     tools = (
         "get_current_utc_time",
         "search_web",
@@ -402,7 +403,7 @@ Do not:
 
 Recommended:
 - keep one skill focused on one concern
-- put it under either `workspace/skills/behavior/...` or `workspace/skills/knowledge/...`
+- put it under either `src/workspace/skills/behavior/...` or `src/workspace/skills/knowledge/...`
 - use a heading and normal markdown content
 - let the framework infer the title from the first heading or file name
 - let the framework infer the summary from the first paragraph
@@ -436,8 +437,8 @@ Inside `behavior`, the common sub-patterns are:
   - examples: do not invent status, separate facts from assumptions, require verification before commitments
 
 Public ids come from the path after `behavior/` or `knowledge/`:
-- `workspace/skills/behavior/support/policy.md` -> `support.policy`
-- `workspace/skills/knowledge/support/triage.md` -> `support.triage`
+- `src/workspace/skills/behavior/support/policy.md` -> `support.policy`
+- `src/workspace/skills/knowledge/support/triage.md` -> `support.triage`
 
 Agent definitions should list exact ids:
 - `behavior = ("support.persona", "support.policy")`

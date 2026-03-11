@@ -1,10 +1,8 @@
 from core.contracts.agent import (
     Agent,
     AgentModule,
-    OrchestratedAgentModule,
     VALID_RUNTIME_MODES,
     register_agent_class,
-    register_orchestrated_agent_class,
 )
 from core.contracts.execution import (
     DEFAULT_EXECUTION_CONFIG,
@@ -61,7 +59,6 @@ __all__ = [
     "Agent",
     "AgentHooks",
     "AgentModule",
-    "OrchestratedAgentModule",
     "DEFAULT_AGENT_HOOKS",
     "DEFAULT_CORE_TOOLSET",
     "DEFAULT_CORE_TOOLSETS",
@@ -91,7 +88,6 @@ __all__ = [
     "lite_llm_model",
     "normalize_lite_llm_reference",
     "register_agent_class",
-    "register_orchestrated_agent_class",
     "register_core_toolset",
     "register_skill",
     "register_tool",

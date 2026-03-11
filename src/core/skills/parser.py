@@ -84,7 +84,7 @@ def infer_skill_class(path: Path, skills_root: Path) -> str:
     if root == "uploads":
         return "knowledge"
     raise ValueError(
-        "Skill {path} must live under workspace/skills/behavior, workspace/skills/knowledge, or workspace/skills/uploads.".format(
+        "Skill {path} must live under src/workspace/skills/behavior, src/workspace/skills/knowledge, or src/workspace/skills/uploads.".format(
             path=str(path)
         )
     )

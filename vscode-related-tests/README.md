@@ -33,5 +33,5 @@ Switch editors to change the displayed module. Use `Refresh Related Tests` on th
 Install from this workspace with:
 
 ```bash
-uv run poe install-related-tests-extension
+uv run poe install-tests-ext
 ```

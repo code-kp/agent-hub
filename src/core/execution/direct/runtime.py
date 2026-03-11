@@ -39,18 +39,27 @@ import core.stream.progress as stream_progress
 
 DEFAULT_MODEL = "gemini-2.0-flash"
 DEFAULT_MODEL_TIMEOUT_SECONDS = 60.0
+MAX_TRANSIENT_MODEL_RETRIES = 1
 
 
 class DirectAgentRuntime:
-    def __init__(self, record: runtime_types.AgentRecord) -> None:
+    def __init__(
+        self,
+        record: runtime_types.AgentRecord,
+        *,
+        model_name_override: str | None = None,
+    ) -> None:
         self.record = record
+        self.model_name_override = str(model_name_override or "").strip()
         self.definition = registry.Register.get(
             contracts_agent.Agent, record.agent_name
         )
         self.execution: contracts_execution.ExecutionConfig = self.definition.execution
         self.memory: contracts_memory.MemoryConfig = self.definition.memory
         self.hooks: contracts_hooks.AgentHooks = self.definition.hooks
-        self.model_name, self._model_source = self._resolve_model_name()
+        self.model_name, self._model_source = self._resolve_model_name(
+            self.model_name_override
+        )
         self.resolved_model = runtime_models.resolve_model(self.model_name)
         self.model_timeout_seconds = self._resolve_model_timeout_seconds()
         self._resolved_tools = contracts_tools.ensure_tools(self.definition.tools)
@@ -115,16 +124,26 @@ class DirectAgentRuntime:
             for tool in self._resolved_tools
         }
 
-    def _resolve_model_name(self) -> tuple[str, str]:
+    def _resolve_model_name(
+        self,
+        model_name_override: str | None = None,
+    ) -> tuple[str, str]:
+        request_model = contracts_models.normalize_model_reference(
+            model_name_override,
+            model_backend=os.getenv("MODEL_BACKEND"),
+        )
+        if request_model:
+            return request_model, "request"
+
         explicit_model = (self.definition.model or "").strip()
         if explicit_model:
             return explicit_model, "agent"
 
-        env_model = (os.getenv("MODEL_NAME") or "").strip()
+        env_model = contracts_models.normalize_model_reference(
+            os.getenv("MODEL_NAME"),
+            model_backend=os.getenv("MODEL_BACKEND"),
+        )
         if env_model:
-            env_backend = (os.getenv("MODEL_BACKEND") or "").strip().lower()
-            if env_backend == "litellm":
-                env_model = contracts_models.lite_llm_model(env_model)
             return env_model, "env"
 
         return DEFAULT_MODEL, "default"
@@ -157,6 +176,19 @@ class DirectAgentRuntime:
             instruction=instruction,
             tool_callables=list(self._tool_callables.values()),
             before_model_callback=self._before_model_callback,
+            generate_content_config=self._build_generate_content_config(),
+        )
+
+    def _build_generate_content_config(
+        self,
+    ) -> types.GenerateContentConfig | None:
+        if self.resolved_model.backend != "native":
+            return None
+        if not self.resolved_model.reference.startswith("gemini"):
+            return None
+        return runtime_adk.build_generate_content_config(
+            model_name=self.resolved_model.reference,
+            include_thoughts=True,
         )
 
     def _create_runner(self):
@@ -195,6 +227,14 @@ class DirectAgentRuntime:
             model=active_model,
             seconds=seconds,
         )
+        if self._model_source == "request":
+            return (
+                "{message} The current request selected {configured}. Leave the UI "
+                "model setting blank to fall back to the agent or environment default."
+            ).format(
+                message=message,
+                configured=self.model_name,
+            )
         if self._model_source == "env" and self.model_name != DEFAULT_MODEL:
             return (
                 "{message} The current .env sets MODEL_NAME to {configured}. "
@@ -264,6 +304,29 @@ class DirectAgentRuntime:
             },
         )
 
+    async def _emit_model_thinking(
+        self,
+        *,
+        stream: stream_progress.EventStream,
+        hook_state: contracts_hooks.HookState,
+        thought_text: str = "",
+        state: str = "running",
+    ) -> None:
+        merged_text = str(
+            thought_text or hook_state.get("_model_thinking_text") or ""
+        ).strip()
+        if not merged_text:
+            return
+        hook_state["_model_thinking_text"] = merged_text
+        await stream_progress.emit_thinking_step(
+            step_id="model_thinking",
+            label="Model thinking",
+            detail=merged_text,
+            state=state,
+            agent_id=self.record.agent_id,
+            source="model",
+        )
+
     async def ensure_session(self, user_id: str, session_id: str) -> None:
         key = (user_id, session_id)
         if key in self._session_keys:
@@ -314,7 +377,6 @@ class DirectAgentRuntime:
         skill_store_token: Optional[contextvars.Token] = None
         history_token: Optional[contextvars.Token] = None
         memory_token: Optional[contextvars.Token] = None
-        assistant_buffer = ""
         usage_aggregator = runtime_usage.UsageAggregator()
         hook_state = self.hooks.create_turn_state(
             agent_id=self.record.agent_id,
@@ -360,7 +422,7 @@ class DirectAgentRuntime:
                 )
                 return
 
-            assistant_buffer = await self._execute_model_turn(
+            await self._execute_model_turn(
                 stream=stream,
                 message=message,
                 user_id=user_id,
@@ -394,6 +456,11 @@ class DirectAgentRuntime:
         except asyncio.TimeoutError:
             self.runner = self._create_runner()
             message_text = self._model_timeout_message()
+            await self._emit_model_thinking(
+                stream=stream,
+                hook_state=hook_state,
+                state="error",
+            )
             await self._emit_terminal_error(
                 stream,
                 session_id=session_id,
@@ -405,6 +472,11 @@ class DirectAgentRuntime:
             message_text = runtime_models.describe_model_error(
                 exc,
                 model_reference=self.model_name,
+            )
+            await self._emit_model_thinking(
+                stream=stream,
+                hook_state=hook_state,
+                state="error",
             )
             await self._emit_terminal_error(
                 stream,
@@ -545,33 +617,62 @@ class DirectAgentRuntime:
         )
 
         assistant_buffer = ""
-        heartbeat_task = asyncio.create_task(
-            self._emit_model_waiting_updates(stream, self.model_name)
-        )
-        try:
-            user_content = types.Content(role="user", parts=[types.Part(text=message)])
-            async with asyncio.timeout(self.model_timeout_seconds):
-                async for event in runtime_adk.stream_runner_events(
-                    runner=self.runner,
-                    user_id=user_id,
-                    session_id=session_id,
-                    new_message=user_content,
-                    stream_output=stream_output,
-                ):
-                    assistant_buffer = await self._handle_runner_event(
-                        stream=stream,
-                        event=event,
-                        message=message,
-                        resolved_context=resolved_context,
-                        assistant_buffer=assistant_buffer,
-                        hook_state=hook_state,
-                        stream_output=stream_output,
-                        usage_aggregator=usage_aggregator,
-                    )
-        finally:
-            heartbeat_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await heartbeat_task
+        retry_attempt = 0
+        while True:
+            heartbeat_task = asyncio.create_task(
+                self._emit_model_waiting_updates(stream, self.model_name)
+            )
+            saw_attempt_event = False
+            try:
+                user_content = types.Content(
+                    role="user", parts=[types.Part(text=message)]
+                )
+                async with asyncio.timeout(self.model_timeout_seconds):
+                    async for event in runtime_adk.stream_runner_events(
+                        runner=self.runner,
+                        user_id=user_id,
+                        session_id=session_id,
+                        new_message=user_content,
+                        # Keep model-side streaming enabled so tool/thinking updates
+                        # continue to arrive live even when assistant text deltas are off.
+                        stream_output=True,
+                    ):
+                        saw_attempt_event = True
+                        assistant_buffer = await self._handle_runner_event(
+                            stream=stream,
+                            event=event,
+                            message=message,
+                            resolved_context=resolved_context,
+                            assistant_buffer=assistant_buffer,
+                            hook_state=hook_state,
+                            stream_output=stream_output,
+                            usage_aggregator=usage_aggregator,
+                        )
+                return assistant_buffer
+            except Exception as exc:
+                should_retry = (
+                    retry_attempt < MAX_TRANSIENT_MODEL_RETRIES
+                    and not saw_attempt_event
+                    and not assistant_buffer
+                    and runtime_models.should_retry_model_error(exc)
+                )
+                if not should_retry:
+                    raise
+
+                retry_attempt += 1
+                self.runner = self._create_runner()
+                await stream_progress.emit_thinking_step(
+                    step_id="answer",
+                    label="Retrying after a model error",
+                    detail="The model returned a temporary internal error, so the same step is being retried once.",
+                    state="running",
+                    agent_id=self.record.agent_id,
+                )
+                await asyncio.sleep(float(retry_attempt))
+            finally:
+                heartbeat_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await heartbeat_task
 
         return assistant_buffer
 
@@ -588,6 +689,7 @@ class DirectAgentRuntime:
         usage_aggregator: runtime_usage.UsageAggregator,
     ) -> str:
         text = runtime_adk.extract_text(event)
+        thought_text = runtime_adk.extract_thought_text(event)
         function_calls = list(event.get_function_calls() or [])
         function_responses = list(event.get_function_responses() or [])
         usage_aggregator.record_event(event)
@@ -602,6 +704,17 @@ class DirectAgentRuntime:
             function_responses=function_responses,
             hook_state=hook_state,
         )
+
+        if thought_text:
+            await self._emit_model_thinking(
+                stream=stream,
+                hook_state=hook_state,
+                thought_text=runtime_adk.merge_streamed_text(
+                    streamed_text=str(hook_state.get("_model_thinking_text") or ""),
+                    final_event_text=thought_text,
+                ),
+                state="running",
+            )
 
         if getattr(event, "partial", False) and text:
             assistant_buffer += text
@@ -621,6 +734,13 @@ class DirectAgentRuntime:
                     },
                 )
             return assistant_buffer
+
+        if event.is_final_response():
+            await self._emit_model_thinking(
+                stream=stream,
+                hook_state=hook_state,
+                state="done",
+            )
 
         if event.is_final_response() and (text or assistant_buffer):
             final_text = runtime_adk.merge_streamed_text(

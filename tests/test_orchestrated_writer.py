@@ -31,6 +31,27 @@ class _WriterAgentStub:
         )
 
 
+class _WriterAgentFullFinalStub:
+    name = "writer-agent"
+
+    async def run_async(self, ctx):
+        yield Event(
+            author=self.name,
+            invocation_id=ctx.invocation_id,
+            partial=True,
+            content=types.Content(role="model", parts=[types.Part(text="Hello ")]),
+        )
+        yield Event(
+            author=self.name,
+            invocation_id=ctx.invocation_id,
+            turn_complete=True,
+            content=types.Content(
+                role="model",
+                parts=[types.Part(text="Hello world")],
+            ),
+        )
+
+
 class OrchestratedWriterTest(unittest.IsolatedAsyncioTestCase):
     async def test_stream_writer_relays_partial_and_final_events(self) -> None:
         controller = orchestrated_controller.OrchestratedController.model_construct(
@@ -59,6 +80,31 @@ class OrchestratedWriterTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(_event_text(events[0]), "Hello ")
 
         self.assertEqual(events[1].author, "controller")
+        self.assertTrue(events[1].is_final_response())
+        self.assertEqual(_event_text(events[1]), "[final]Hello world")
+
+    async def test_stream_writer_deduplicates_full_final_text(self) -> None:
+        controller = orchestrated_controller.OrchestratedController.model_construct(
+            name="controller",
+            writer_agent=_WriterAgentFullFinalStub(),
+            agent_hooks=_FinalizeHook(),
+        )
+
+        ctx = py_types.SimpleNamespace(
+            invocation_id="inv-2",
+            session=py_types.SimpleNamespace(
+                state={orchestrated_controller.HOOK_STATE_KEY: {}},
+                user_id="user-1",
+                id="session-1",
+            ),
+            user_content=None,
+        )
+
+        events = []
+        async for event in controller._stream_writer(ctx):
+            events.append(event)
+
+        self.assertEqual(len(events), 2)
         self.assertTrue(events[1].is_final_response())
         self.assertEqual(_event_text(events[1]), "[final]Hello world")
 

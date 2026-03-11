@@ -55,3 +55,18 @@ def normalize_lite_llm_reference(model_name: str) -> str:
         "`openai/gpt-4o-mini`, `anthropic/claude-3-7-sonnet`, or "
         "`gemini/gemini-2.0-flash`."
     )
+
+
+def normalize_model_reference(
+    model_name: str | None,
+    *,
+    model_backend: str | None = None,
+) -> str:
+    normalized = str(model_name or "").strip()
+    if not normalized:
+        return ""
+    if is_lite_llm_model(normalized):
+        return normalized
+    if str(model_backend or "").strip().lower() == "litellm":
+        return lite_llm_model(normalized)
+    return normalized

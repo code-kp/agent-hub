@@ -5,13 +5,14 @@ Tests:
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 
 from core.discovery import DiscoveryService
-from core.contracts.agent import Agent
+from core.contracts.agent import Agent, normalize_runtime_mode
 from core.execution import AgentRecord, create_agent_runtime
 from core.contracts.skills import SkillDefinition
 from core.registry import Register
@@ -23,13 +24,16 @@ class AgentPlatform:
 
     def __init__(self, workspace_root: Path) -> None:
         self.workspace_root = workspace_root
-        load_dotenv(self.workspace_root.parent / ".env")
+        self._env_path = self.workspace_root.parent / ".env"
+        self._loaded_env_keys: Dict[str, Optional[str]] = {}
+        self._last_dotenv_values: Dict[str, str] = {}
         self.discovery = DiscoveryService(self.workspace_root)
         self._records: Dict[str, AgentRecord] = {}
-        self._runtimes: Dict[str, Any] = {}
+        self._runtimes: Dict[tuple[str, str, str], Any] = {}
         self.refresh()
 
     def refresh(self) -> None:
+        env_changed = self._sync_workspace_env()
         self.discovery.discover_skills()
         discovered = self.discovery.discover_agents()
         if not discovered:
@@ -46,7 +50,9 @@ class AgentPlatform:
             )
 
         records: Dict[str, AgentRecord] = {}
+        definitions: Dict[str, Agent] = {}
         for agent_id, item in discovered.items():
+            definitions[agent_id] = item.definition
             records[agent_id] = AgentRecord(
                 agent_id=agent_id,
                 module_name=item.module_name,
@@ -56,26 +62,99 @@ class AgentPlatform:
                 fingerprint=item.fingerprint,
             )
 
-        removed_ids = set(self._runtimes.keys()) - set(records.keys())
-        for removed_id in removed_ids:
-            self._runtimes.pop(removed_id, None)
+        removed_runtime_keys = [
+            key for key in self._runtimes.keys() if key[0] not in records
+        ]
+        for runtime_key in removed_runtime_keys:
+            self._runtimes.pop(runtime_key, None)
+
+        if env_changed:
+            self._runtimes.clear()
 
         for agent_id, record in records.items():
             previous = self._records.get(agent_id)
-            if previous != record or agent_id not in self._runtimes:
-                self._runtimes[agent_id] = create_agent_runtime(record)
+            if previous != record:
+                stale_keys = [
+                    key for key in self._runtimes.keys() if key[0] == agent_id
+                ]
+                for runtime_key in stale_keys:
+                    self._runtimes.pop(runtime_key, None)
+
+            default_mode = normalize_runtime_mode(definitions[agent_id].runtime_mode)
+            runtime_key = (agent_id, default_mode, "")
+            if runtime_key not in self._runtimes:
+                self._runtimes[runtime_key] = create_agent_runtime(
+                    record,
+                    runtime_mode=default_mode,
+                )
 
         self._records = records
 
-    def resolve_runtime(self, agent_id: Optional[str]) -> tuple[str, Any]:
+    def _sync_workspace_env(self) -> bool:
+        next_values = {
+            key: value
+            for key, value in dotenv_values(self._env_path).items()
+            if key and value is not None
+        }
+        if next_values == self._last_dotenv_values:
+            return False
+
+        removed_keys = set(self._last_dotenv_values.keys()) - set(next_values.keys())
+        for key in removed_keys:
+            if key not in self._loaded_env_keys:
+                continue
+            original_value = self._loaded_env_keys.pop(key)
+            if original_value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = original_value
+
+        for key, value in next_values.items():
+            if key in self._loaded_env_keys:
+                os.environ[key] = value
+                continue
+            if key in os.environ:
+                continue
+            self._loaded_env_keys[key] = None
+            os.environ[key] = value
+
+        self._last_dotenv_values = next_values
+        return True
+
+    def resolve_runtime(
+        self,
+        agent_id: Optional[str],
+        mode: Optional[str] = None,
+        model_name: Optional[str] = None,
+    ) -> tuple[str, str, Any]:
         self.refresh()
         resolved_agent = agent_id or sorted(self._records.keys())[0]
-        runtime = self._runtimes.get(resolved_agent)
-        if runtime is None:
+        record = self._records.get(resolved_agent)
+        if record is None:
             raise KeyError(
                 "Unknown agent id: {agent_id}".format(agent_id=resolved_agent)
             )
-        return resolved_agent, runtime
+        definition = Register.get(Agent, record.agent_name)
+        resolved_mode = normalize_runtime_mode(mode or definition.runtime_mode)
+
+        if resolved_mode == "orchestrated" and not definition.orchestration_configured:
+            raise ValueError(
+                "Orchestration is not configured for agent: {agent_id}".format(
+                    agent_id=resolved_agent
+                )
+            )
+
+        requested_model_name = str(model_name or "").strip()
+        runtime_key = (resolved_agent, resolved_mode, requested_model_name)
+        runtime = self._runtimes.get(runtime_key)
+        if runtime is None:
+            runtime = create_agent_runtime(
+                record,
+                runtime_mode=resolved_mode,
+                model_name=requested_model_name or None,
+            )
+            self._runtimes[runtime_key] = runtime
+        return resolved_agent, resolved_mode, runtime
 
     @property
     def default_agent_id(self) -> str:
@@ -108,12 +187,15 @@ class AgentPlatform:
             ],
         }
 
-    def list_agents(self, refresh: bool = True) -> List[Dict[str, str]]:
+    def list_agents(self, refresh: bool = True) -> List[Dict[str, Any]]:
         if refresh:
             self.refresh()
         agents = []
         for agent_id, record in sorted(self._records.items(), key=lambda pair: pair[0]):
             definition = Register.get(Agent, record.agent_name)
+            runtime_modes = ["direct"]
+            if definition.orchestration_configured:
+                runtime_modes.append("orchestrated")
             agents.append(
                 {
                     "id": agent_id,
@@ -121,6 +203,9 @@ class AgentPlatform:
                     "description": definition.description,
                     "module": record.module_name,
                     "project": record.project_name,
+                    "default_mode": normalize_runtime_mode(definition.runtime_mode),
+                    "runtime_modes": runtime_modes,
+                    "orchestration_configured": definition.orchestration_configured,
                 }
             )
         return agents
@@ -181,13 +266,19 @@ class AgentPlatform:
         self,
         *,
         agent_id: Optional[str],
+        mode: Optional[str],
+        model_name: Optional[str],
         message: str,
         user_id: str,
         session_id: Optional[str],
         history: Optional[Sequence[Mapping[str, Any]]] = None,
         stream: bool = True,
     ):
-        resolved_agent, runtime = self.resolve_runtime(agent_id)
+        resolved_agent, resolved_mode, runtime = self.resolve_runtime(
+            agent_id,
+            mode=mode,
+            model_name=model_name,
+        )
         active_session_id, event_stream = await runtime.stream_chat(
             message=message,
             user_id=user_id,
@@ -195,7 +286,7 @@ class AgentPlatform:
             history=history,
             stream=stream,
         )
-        return resolved_agent, active_session_id, event_stream
+        return resolved_agent, resolved_mode, active_session_id, event_stream
 
     def upload_skill_markdown(
         self,

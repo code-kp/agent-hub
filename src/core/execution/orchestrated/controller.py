@@ -11,6 +11,7 @@ from google.genai import types
 
 import core.contracts.execution as contracts_execution
 import core.contracts.hooks as contracts_hooks
+import core.execution.shared.adk as runtime_adk
 import core.execution.orchestrated.models as orchestrated_models
 import core.execution.orchestrated.prompts as orchestrated_prompts
 
@@ -476,8 +477,9 @@ class OrchestratedController(BaseAgent):
                     continue
 
                 if event.is_final_response() and (text or assembled_text):
-                    final_text = "{buffer}{tail}".format(
-                        buffer=assembled_text, tail=text
+                    final_text = runtime_adk.merge_streamed_text(
+                        streamed_text=assembled_text,
+                        final_event_text=text,
                     ).strip()
                     yield self._final_answer_event(ctx, final_text)
                     return
@@ -505,6 +507,7 @@ def build_orchestrated_controller(
     description: str,
     system_prompt: str,
     model: Any,
+    generate_content_config: types.GenerateContentConfig | None,
     tool_callables: Sequence[Callable[..., Any]],
     tool_definitions: Sequence[Any],
     execution_config: contracts_execution.ExecutionConfig,
@@ -529,6 +532,7 @@ def build_orchestrated_controller(
         output_schema=orchestrated_models.Plan,
         output_key=PLANNER_OUTPUT_KEY,
         before_model_callback=before_model_callback,
+        generate_content_config=generate_content_config,
     )
     executor_agent = LlmAgent(
         name="{name}_executor".format(name=agent_name),
@@ -547,6 +551,7 @@ def build_orchestrated_controller(
         include_contents="none",
         tools=list(tool_callables),
         before_model_callback=before_model_callback,
+        generate_content_config=generate_content_config,
     )
     replanner_agent = LlmAgent(
         name="{name}_replanner".format(name=agent_name),
@@ -565,6 +570,7 @@ def build_orchestrated_controller(
         output_schema=orchestrated_models.Decision,
         output_key=REPLANNER_OUTPUT_KEY,
         before_model_callback=before_model_callback,
+        generate_content_config=generate_content_config,
     )
     verifier_agent = LlmAgent(
         name="{name}_verifier".format(name=agent_name),
@@ -583,6 +589,7 @@ def build_orchestrated_controller(
         output_schema=orchestrated_models.Verification,
         output_key=VERIFIER_OUTPUT_KEY,
         before_model_callback=before_model_callback,
+        generate_content_config=generate_content_config,
     )
     writer_agent = LlmAgent(
         name="{name}_writer".format(name=agent_name),
@@ -599,6 +606,7 @@ def build_orchestrated_controller(
         ),
         include_contents="none",
         before_model_callback=before_model_callback,
+        generate_content_config=generate_content_config,
     )
     return OrchestratedController(
         name=agent_name,

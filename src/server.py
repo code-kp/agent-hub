@@ -30,6 +30,8 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     message: str
     agent_id: Optional[str] = None
+    mode: Optional[str] = None
+    model_name: Optional[str] = None
     session_id: Optional[str] = None
     user_id: str = "browser-user"
     history: Optional[List["HistoryMessage"]] = None
@@ -38,6 +40,7 @@ class ChatRequest(BaseModel):
 
 class AiRequest(BaseModel):
     agent_id: Optional[str] = None
+    model_name: Optional[str] = None
     instructions: str
     message: str
 
@@ -60,8 +63,10 @@ async def agents() -> JSONResponse:
 @app.post("/api/chat/stream")
 async def stream_chat(payload: ChatRequest) -> StreamingResponse:
     try:
-        agent_id, session_id, stream = await service.stream_chat(
+        agent_id, mode, session_id, stream = await service.stream_chat(
             agent_id=payload.agent_id,
+            mode=payload.mode,
+            model_name=payload.model_name,
             message=payload.message,
             user_id=payload.user_id,
             session_id=payload.session_id,
@@ -72,12 +77,15 @@ async def stream_chat(payload: ChatRequest) -> StreamingResponse:
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     headers = {
         "Cache-Control": "no-cache, no-transform",
         "Connection": "keep-alive",
         "X-Accel-Buffering": "no",
         "X-Agent-Id": agent_id,
+        "X-Mode": mode,
         "X-Session-Id": session_id,
     }
     return StreamingResponse(stream, media_type="text/event-stream", headers=headers)
@@ -88,6 +96,7 @@ async def run_ai_request(payload: AiRequest) -> JSONResponse:
     try:
         text = await ai_service.generate_text(
             agent_id=payload.agent_id,
+            model_name=payload.model_name,
             instructions=payload.instructions,
             message=payload.message,
         )

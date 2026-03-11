@@ -2,15 +2,15 @@
 
 Everything contributors need lives here:
 
-- `agents/` for agent modules
-- `tools/` for shared tool modules
-- `skills/` for markdown skills
+- `src/workspace/agents/` for agent modules
+- `src/workspace/tools/` for shared tool modules
+- `src/workspace/skills/` for markdown skills
 
 Rules:
 
-- Agent ids come from the directory hierarchy under `agents/`
+- Agent ids come from the directory hierarchy under `src/workspace/agents/`
 - Tool modules are loaded before agent modules, so agents can reference tools by name
-- Skill ids come from the directory hierarchy under `skills/`
+- Skill ids come from the directory hierarchy under `src/workspace/skills/`
 - Skill files should live under either `skills/behavior/` or `skills/knowledge/`
 - Agents should use `behavior` and `knowledge`
 
@@ -22,7 +22,6 @@ Use this file for contributor-facing authoring rules.
 Recommended:
 - use one class per agent module
 - inherit from `AgentModule` for simple direct tool-calling agents
-- inherit from `OrchestratedAgentModule` when you want the framework to drive `plan -> execute -> replan -> verify`
 - register with `@register_agent_class`
 - keep the prompt focused on behavior and synthesis
 - reference only explicit tools by name
@@ -30,6 +29,7 @@ Recommended:
 - use `knowledge` for retrievable reference material
 - use `memory` when the agent should carry compact follow-up context across turns
 - let the model decide whether tools are needed; use `execution` only for tool-loop limits and guardrails
+- set `execution` when the agent should support orchestrated runtime in the UI and API
 - use `hooks` only for agent-specific prompt additions or final response shaping that should not move into `core`
 
 Example:
@@ -110,22 +110,28 @@ Implicit framework tools:
 Orchestrated example:
 
 ```python
-from core.contracts.agent import OrchestratedAgentModule, register_orchestrated_agent_class
+from core.contracts.agent import AgentModule, register_agent_class
 from core.contracts.execution import ExecutionConfig
 
 
-@register_orchestrated_agent_class
-class ResearchAgent(OrchestratedAgentModule):
+@register_agent_class
+class ResearchAgent(AgentModule):
     name = "Research Agent"
     description = "Plans and verifies before answering."
     system_prompt = "Answer with verification and cite external evidence inline."
+    runtime_mode = "orchestrated"
     tools = ("get_current_utc_time", "search_web", "fetch_web_page")
     execution = ExecutionConfig(max_tool_calls=8, max_replans=3, max_verification_rounds=2)
 ```
 
+Runtime selection:
+- `mode="direct"` runs the direct tool-calling runtime
+- `mode="orchestrated"` runs the planner/executor runtime, but only for agents with an explicit `execution` config
+- if `mode` is omitted, the agent's `runtime_mode` becomes the default
+
 ## Best Way To Define A Tool
 
-Put tools in `workspace/tools/*.py`.
+Put tools in `src/workspace/tools/*.py`.
 
 Recommended:
 - use `ToolModule`
@@ -172,8 +178,8 @@ Avoid:
 
 Put skills in one of these folders:
 
-- `workspace/skills/behavior/...`
-- `workspace/skills/knowledge/...`
+- `src/workspace/skills/behavior/...`
+- `src/workspace/skills/knowledge/...`
 
 That is the whole public model:
 
@@ -219,8 +225,8 @@ Refunds are available for annual plans within 30 days of the original purchase.
 
 Public ids come from the path after `behavior/` or `knowledge/`:
 
-- `workspace/skills/behavior/support/persona.md` -> `support.persona`
-- `workspace/skills/knowledge/support/refunds.md` -> `support.refunds`
+- `src/workspace/skills/behavior/support/persona.md` -> `support.persona`
+- `src/workspace/skills/knowledge/support/refunds.md` -> `support.refunds`
 
 Agents should list exact ids:
 
@@ -234,10 +240,10 @@ Avoid:
 
 ## Namespace Rules
 
-- `workspace/agents/general.py` -> agent id `general`
-- `workspace/agents/support/triage.py` -> agent id `support.triage`
-- `workspace/skills/behavior/support/policy.md` -> skill id `support.policy`
-- `workspace/skills/knowledge/general/product.md` -> skill id `general.product`
+- `src/workspace/agents/general.py` -> agent id `general`
+- `src/workspace/agents/support/triage.py` -> agent id `support.triage`
+- `src/workspace/skills/behavior/support/policy.md` -> skill id `support.policy`
+- `src/workspace/skills/knowledge/general/product.md` -> skill id `general.product`
 
 ## Design Rule
 

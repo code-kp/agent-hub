@@ -16,12 +16,16 @@ class ServerUploadTest(unittest.TestCase):
         with patch.object(
             server.service,
             "stream_chat",
-            AsyncMock(return_value=("web.answer", "session-1", fake_stream())),
+            AsyncMock(
+                return_value=("web.answer", "orchestrated", "session-1", fake_stream())
+            ),
         ) as stream_chat:
             response = client.post(
                 "/api/chat/stream",
                 json={
                     "agent_id": "web.answer",
+                    "mode": "orchestrated",
+                    "model_name": "gemini-2.0-flash",
                     "message": "hello",
                     "session_id": "session-1",
                     "user_id": "browser-user",
@@ -32,6 +36,8 @@ class ServerUploadTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         stream_chat.assert_awaited_once_with(
             agent_id="web.answer",
+            mode="orchestrated",
+            model_name="gemini-2.0-flash",
             message="hello",
             user_id="browser-user",
             session_id="session-1",
@@ -39,6 +45,7 @@ class ServerUploadTest(unittest.TestCase):
             stream=False,
         )
         self.assertEqual(response.headers["x-session-id"], "session-1")
+        self.assertEqual(response.headers["x-mode"], "orchestrated")
 
     def test_ai_endpoint_routes_conversation_title_task(self) -> None:
         client = TestClient(server.app)
@@ -52,6 +59,7 @@ class ServerUploadTest(unittest.TestCase):
                 "/api/ai",
                 json={
                     "agent_id": "general",
+                    "model_name": "gemini-2.0-flash",
                     "instructions": "Generate a concise title.",
                     "message": "user: How do I reset my billing password?\nassistant: Open the billing settings page.",
                 },
@@ -61,6 +69,7 @@ class ServerUploadTest(unittest.TestCase):
         self.assertEqual(response.json()["text"], "Billing Password Reset")
         execute.assert_awaited_once_with(
             agent_id="general",
+            model_name="gemini-2.0-flash",
             instructions="Generate a concise title.",
             message="user: How do I reset my billing password?\nassistant: Open the billing settings page.",
         )

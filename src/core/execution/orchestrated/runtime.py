@@ -23,6 +23,7 @@ class OrchestratedAgentRuntime(direct_runtime.DirectAgentRuntime):
             description=self.definition.description,
             system_prompt=self.definition.system_prompt,
             model=self.resolved_model.adk_model,
+            generate_content_config=self._build_generate_content_config(),
             tool_callables=list(self._tool_callables.values()),
             tool_definitions=tuple(self._tool_definitions.values()),
             execution_config=self.execution,
@@ -42,6 +43,7 @@ class OrchestratedAgentRuntime(direct_runtime.DirectAgentRuntime):
         stream_output: bool,
         usage_aggregator: runtime_usage.UsageAggregator,
     ) -> str:
+        thought_text = runtime_adk.extract_thought_text(event)
         function_calls = list(event.get_function_calls() or [])
         function_responses = list(event.get_function_responses() or [])
         usage_aggregator.record_event(event)
@@ -60,6 +62,17 @@ class OrchestratedAgentRuntime(direct_runtime.DirectAgentRuntime):
         if platform_event is not None:
             await _emit_platform_event(platform_event, agent_id=self.record.agent_id)
 
+        if thought_text:
+            await self._emit_model_thinking(
+                stream=stream,
+                hook_state=hook_state,
+                thought_text=runtime_adk.merge_streamed_text(
+                    streamed_text=str(hook_state.get("_model_thinking_text") or ""),
+                    final_event_text=thought_text,
+                ),
+                state="running",
+            )
+
         if getattr(event, "author", "") != self.agent.name:
             return assistant_buffer
 
@@ -75,6 +88,13 @@ class OrchestratedAgentRuntime(direct_runtime.DirectAgentRuntime):
                     },
                 )
             return assistant_buffer
+
+        if event.is_final_response():
+            await self._emit_model_thinking(
+                stream=stream,
+                hook_state=hook_state,
+                state="done",
+            )
 
         if event.is_final_response() and (text or assistant_buffer):
             final_text = runtime_adk.merge_streamed_text(
