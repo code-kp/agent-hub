@@ -24,8 +24,8 @@ if TYPE_CHECKING:
 
 
 SMART_AGENT_ID = "smart"
-SMART_AGENT_NAME = "Smart Mode"
-SMART_AGENT_DESCRIPTION = "Selects the right agent sequence from the defined catalog and returns only routed-agent output."
+SMART_AGENT_NAME = "Team Mode"
+SMART_AGENT_DESCRIPTION = "Coordinates a response across the selected agents and returns only routed-agent output."
 
 DEFAULT_MODEL = "gemini-2.0-flash"
 ROUTER_TIMEOUT_SECONDS = 20.0
@@ -106,9 +106,10 @@ class SmartAgentRuntime:
         session_id: Optional[str] = None,
         conversation_id: Optional[str] = None,
         history: Optional[list[dict[str, Any]]] = None,
+        team_agent_ids: Optional[Sequence[str]] = None,
         stream: bool = True,
     ):
-        active_session_id = session_id or "smart-{value}".format(value=uuid4())
+        active_session_id = session_id or "team-{value}".format(value=uuid4())
         event_stream = stream_progress.EventStream()
         asyncio.create_task(
             self._run_chat(
@@ -118,6 +119,7 @@ class SmartAgentRuntime:
                 session_id=active_session_id,
                 conversation_id=conversation_id,
                 history=history or [],
+                team_agent_ids=team_agent_ids or [],
                 stream_output=stream,
             )
         )
@@ -132,25 +134,39 @@ class SmartAgentRuntime:
         session_id: str,
         conversation_id: Optional[str],
         history: list[dict[str, Any]],
+        team_agent_ids: Sequence[str],
         stream_output: bool,
     ) -> None:
         stream_token = stream_progress.bind_progress_stream(stream)
         try:
+            selected_team = [
+                agent_id.strip()
+                for agent_id in team_agent_ids
+                if str(agent_id or "").strip()
+            ]
             await stream.emit(
                 "run_started",
                 {
                     "agent_id": SMART_AGENT_ID,
                     "session_id": session_id,
                     "user_id": user_id,
-                    "message": "Selecting the best agent for this request.",
+                    "message": (
+                        "Selecting the best agent from the chosen team."
+                        if selected_team
+                        else "Selecting the best agent for this request."
+                    ),
                 },
             )
-            candidates = self.platform.routing_candidates(refresh=True)
+            candidates = self._routing_candidates(selected_team)
             if not candidates:
                 await self._emit_terminal_error(
                     stream=stream,
                     session_id=session_id,
-                    message="No defined agents are available to take this request.",
+                    message=(
+                        "Team Mode needs at least one available selected agent."
+                        if selected_team
+                        else "No defined agents are available to take this request."
+                    ),
                 )
                 return
 
@@ -333,7 +349,7 @@ class SmartAgentRuntime:
                 "agent_id": SMART_AGENT_ID,
                 "session_id": session_id,
                 "message": message,
-                "error": "smart_mode_error",
+                "error": "team_mode_error",
             },
         )
         await stream.emit(
@@ -751,6 +767,25 @@ class SmartAgentRuntime:
             if str(candidate.get("id") or "").strip() == normalized_agent_id:
                 return candidate
         raise KeyError("Unknown routed agent id: {agent_id}".format(agent_id=agent_id))
+
+    def _routing_candidates(
+        self,
+        team_agent_ids: Sequence[str],
+    ) -> list[dict[str, Any]]:
+        candidates = self.platform.routing_candidates(refresh=True)
+        selected_ids = {
+            str(agent_id or "").strip()
+            for agent_id in team_agent_ids
+            if str(agent_id or "").strip()
+        }
+        if not selected_ids:
+            return candidates
+
+        return [
+            dict(candidate)
+            for candidate in candidates
+            if str(candidate.get("id") or "").strip() in selected_ids
+        ]
 
 
 def _decision_instruction() -> str:

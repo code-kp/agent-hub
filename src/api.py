@@ -112,6 +112,7 @@ class AgentApi:
         self,
         *,
         agent_id: Optional[str],
+        team_agent_ids: Optional[List[str]],
         mode: Optional[str],
         model_name: Optional[str],
         message: str,
@@ -123,6 +124,7 @@ class AgentApi:
     ):
         return await self.platform.stream_chat(
             agent_id=agent_id,
+            team_agent_ids=team_agent_ids,
             mode=mode,
             model_name=model_name,
             message=message,
@@ -138,6 +140,7 @@ class AgentApi:
         *,
         message: str,
         agent_id: Optional[str] = None,
+        team_agent_ids: Optional[List[str]] = None,
         mode: Optional[str] = None,
         model_id: Optional[str] = None,
         model_name: Optional[str] = None,
@@ -156,6 +159,7 @@ class AgentApi:
             raw_stream,
         ) = await self.stream_chat(
             agent_id=agent_id,
+            team_agent_ids=team_agent_ids,
             mode=mode,
             model_name=selected_model_name,
             message=message,
@@ -177,6 +181,7 @@ class AgentApi:
         *,
         message: str,
         agent_id: Optional[str] = None,
+        team_agent_ids: Optional[List[str]] = None,
         mode: Optional[str] = None,
         model_id: Optional[str] = None,
         model_name: Optional[str] = None,
@@ -187,6 +192,7 @@ class AgentApi:
         resolved_agent_id, resolved_mode, next_session_id, events_iter = await self.stream_chat_events(
             message=message,
             agent_id=agent_id,
+            team_agent_ids=team_agent_ids,
             mode=mode,
             model_id=model_id,
             model_name=model_name,
@@ -289,6 +295,7 @@ async def _run_repl(
         try:
             resolved_agent, resolved_mode, next_session_id, events = await api.stream_chat_events(
                 agent_id=selected_agent,
+                team_agent_ids=None,
                 mode=selected_mode,
                 model_name=selected_model_name,
                 message=message,
@@ -377,6 +384,7 @@ async def _run_cli(args: argparse.Namespace) -> int:
     if args.command == "chat":
         result = await api.chat(
             agent_id=args.agent_id,
+            team_agent_ids=None,
             mode=args.mode,
             model_name=args.model_name,
             message=args.message,

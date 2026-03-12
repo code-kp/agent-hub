@@ -11,6 +11,46 @@ function createMessageBase(role, metadata = {}) {
 
 export const SMART_AGENT_ID = "smart";
 
+export function listTeamEligibleAgents(agents) {
+  return (Array.isArray(agents) ? agents : []).filter((agent) => (
+    agent
+      && typeof agent === "object"
+      && String(agent.id || "").trim()
+      && String(agent.id || "").trim() !== SMART_AGENT_ID
+  ));
+}
+
+export function resolveTeamAgentIds(agentIds, agents, { fallbackToAll = true } = {}) {
+  const eligibleAgents = listTeamEligibleAgents(agents);
+  const eligibleIds = new Set(eligibleAgents.map((agent) => String(agent.id).trim()));
+  const normalized = Array.isArray(agentIds)
+    ? [...new Set(agentIds
+      .map((value) => String(value || "").trim())
+      .filter((value) => eligibleIds.has(value)))]
+    : [];
+
+  if (normalized.length || !fallbackToAll) {
+    return normalized;
+  }
+
+  return eligibleAgents.map((agent) => String(agent.id).trim());
+}
+
+export function summarizeTeamAgents(agentIds, agents, limit = 3) {
+  const selectedIds = new Set(resolveTeamAgentIds(agentIds, agents));
+  const selectedAgents = listTeamEligibleAgents(agents).filter((agent) => selectedIds.has(agent.id));
+  if (!selectedAgents.length) {
+    return "No agents selected.";
+  }
+
+  if (selectedAgents.length <= limit) {
+    return `Using ${selectedAgents.map((agent) => agent.name || agent.id).join(", ")}.`;
+  }
+
+  const names = selectedAgents.slice(0, limit).map((agent) => agent.name || agent.id);
+  return `Using ${names.join(", ")}, and ${selectedAgents.length - limit} more.`;
+}
+
 export function normalizeRuntimeMode(mode) {
   return mode === "orchestrated" ? "orchestrated" : "direct";
 }
@@ -183,14 +223,18 @@ export function buildChatTitle(agentId, agents, chats, excludeChatId = "") {
   return count > 0 ? `${base} ${count + 1}` : base;
 }
 
-export function createChat(agentId, agents, chats) {
+export function createChat(agentId, agents, chats, options = {}) {
   const agent = agents.find((item) => item.id === agentId) || null;
+  const teamAgentIds = agentId === SMART_AGENT_ID
+    ? resolveTeamAgentIds(options.teamAgentIds, agents)
+    : resolveTeamAgentIds(options.teamAgentIds, agents, { fallbackToAll: false });
   return {
     id: crypto.randomUUID(),
     title: buildChatTitle(agentId, agents, chats),
     titleSource: "default",
     lastSessionId: "",
     agentId,
+    teamAgentIds,
     runtimeMode: resolveChatRuntimeMode(agent),
     messages: [],
     updatedAt: Date.now(),

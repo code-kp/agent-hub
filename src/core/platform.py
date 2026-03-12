@@ -334,6 +334,7 @@ class AgentPlatform:
         self,
         *,
         agent_id: Optional[str],
+        team_agent_ids: Optional[Sequence[str]],
         mode: Optional[str],
         model_name: Optional[str],
         message: str,
@@ -348,14 +349,18 @@ class AgentPlatform:
             mode=mode,
             model_name=model_name,
         )
-        active_session_id, event_stream = await runtime.stream_chat(
-            message=message,
-            user_id=user_id,
-            session_id=session_id,
-            conversation_id=conversation_id,
-            history=history,
-            stream=stream,
-        )
+        runtime_kwargs = {
+            "message": message,
+            "user_id": user_id,
+            "session_id": session_id,
+            "conversation_id": conversation_id,
+            "history": history,
+            "stream": stream,
+        }
+        if resolved_agent == SMART_AGENT_ID:
+            runtime_kwargs["team_agent_ids"] = list(team_agent_ids or [])
+
+        active_session_id, event_stream = await runtime.stream_chat(**runtime_kwargs)
         return resolved_agent, resolved_mode, active_session_id, event_stream
 
     def upload_skill_markdown(

@@ -24,6 +24,8 @@ import {
   createUserMessage,
   filterTree,
   normalizeAgentTree,
+  SMART_AGENT_ID,
+  resolveTeamAgentIds,
   resolveChatRuntimeMode,
 } from "../lib/chatWorkspace";
 
@@ -85,12 +87,19 @@ export function useWorkspaceChat(userId, responseStreaming, modelId) {
           || (Array.isArray(message.thinking) && message.thinking.length)
       ));
 
+    const normalizedTeamAgentIds = resolveTeamAgentIds(
+      chat.teamAgentIds,
+      availableAgents,
+      { fallbackToAll: agentId === SMART_AGENT_ID },
+    );
+
     return {
       id: String(chat.id || crypto.randomUUID()),
       title: String(chat.title || buildChatTitle(agentId, availableAgents, [])),
       titleSource: String(chat.titleSource || "default"),
       lastSessionId: String(chat.lastSessionId || "").trim(),
       agentId,
+      teamAgentIds: normalizedTeamAgentIds,
       runtimeMode: resolveChatRuntimeMode(agent, chat.runtimeMode),
       messages: normalizedMessages,
       updatedAt: Number(chat.updatedAt) || Date.now(),
@@ -111,6 +120,9 @@ export function useWorkspaceChat(userId, responseStreaming, modelId) {
       return {
         ...chat,
         runtimeMode: nextRuntimeMode,
+        teamAgentIds: chat.agentId === "smart"
+          ? resolveTeamAgentIds(chat.teamAgentIds, incomingAgents)
+          : resolveTeamAgentIds(chat.teamAgentIds, incomingAgents, { fallbackToAll: false }),
         updatedAt: Date.now(),
       };
     }));
@@ -401,15 +413,24 @@ export function useWorkspaceChat(userId, responseStreaming, modelId) {
     }));
   };
 
-  const onSelectAgent = (agentId) => {
+  const onSelectAgent = (agentId, options = {}) => {
     setError("");
 
     if (!agentId || agentId === activeAgentId) {
+      if (!activeChat || !activeChatId || agentId !== SMART_AGENT_ID) {
+        return;
+      }
+
+      updateChat(activeChat.id, (chat) => ({
+        ...chat,
+        teamAgentIds: resolveTeamAgentIds(options.teamAgentIds, agents),
+        updatedAt: Date.now(),
+      }));
       return;
     }
 
     if (!activeChat) {
-      const nextChat = createChat(agentId, agents, chats);
+      const nextChat = createChat(agentId, agents, chats, options);
       setChats((prev) => [nextChat, ...prev]);
       setActiveChatId(nextChat.id);
       return;
@@ -418,6 +439,9 @@ export function useWorkspaceChat(userId, responseStreaming, modelId) {
     updateChat(activeChat.id, (chat) => ({
       ...chat,
       agentId,
+      teamAgentIds: agentId === SMART_AGENT_ID
+        ? resolveTeamAgentIds(options.teamAgentIds || chat.teamAgentIds, agents)
+        : resolveTeamAgentIds(chat.teamAgentIds, agents, { fallbackToAll: false }),
       runtimeMode: resolveChatRuntimeMode(
         agents.find((item) => item.id === agentId) || null,
         chat.runtimeMode,
@@ -529,12 +553,12 @@ export function useWorkspaceChat(userId, responseStreaming, modelId) {
     }
   }, [activeChat, modelId, retitlingChatIds, runningChatIds]);
 
-  const onNewChat = (agentId = activeAgentId || agents[0]?.id || "") => {
+  const onNewChat = (agentId = activeAgentId || agents[0]?.id || "", options = {}) => {
     if (!agentId) {
       return;
     }
 
-    const nextChat = createChat(agentId, agents, chats);
+    const nextChat = createChat(agentId, agents, chats, options);
     setChats((prev) => [nextChat, ...prev]);
     setActiveChatId(nextChat.id);
     setError("");
@@ -654,6 +678,9 @@ export function useWorkspaceChat(userId, responseStreaming, modelId) {
         modelId,
         conversationId: chatId,
         message: text,
+        teamAgentIds: activeAgentId === SMART_AGENT_ID
+          ? resolveTeamAgentIds(activeChat.teamAgentIds, agents)
+          : undefined,
         userId,
         stream: responseStreaming,
         onEvent: (type, payload = {}) => {
@@ -774,6 +801,7 @@ export function useWorkspaceChat(userId, responseStreaming, modelId) {
     chats,
     error,
     filteredTree,
+    tree,
     initialLoadError,
     initialLoadRetrying,
     isSending,

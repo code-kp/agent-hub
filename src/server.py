@@ -40,6 +40,7 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     message: str
     agent_id: Optional[str] = None
+    team_agent_ids: Optional[List[str]] = None
     mode: Optional[str] = None
     model_id: Optional[str] = None
     model_name: Optional[str] = None
@@ -168,6 +169,7 @@ async def stream_chat(payload: ChatRequest) -> StreamingResponse:
         try:
             agent_id, mode, session_id, stream = await service.stream_chat(
                 agent_id=payload.agent_id,
+                team_agent_ids=payload.team_agent_ids,
                 mode=payload.mode,
                 model_name=selected_model_name,
                 message=payload.message,
