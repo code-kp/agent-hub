@@ -9,6 +9,8 @@ function createMessageBase(role, metadata = {}) {
   };
 }
 
+export const SMART_AGENT_ID = "smart";
+
 export function normalizeRuntimeMode(mode) {
   return mode === "orchestrated" ? "orchestrated" : "direct";
 }
@@ -187,6 +189,7 @@ export function createChat(agentId, agents, chats) {
     id: crypto.randomUUID(),
     title: buildChatTitle(agentId, agents, chats),
     titleSource: "default",
+    lastSessionId: "",
     agentId,
     runtimeMode: resolveChatRuntimeMode(agent),
     messages: [],

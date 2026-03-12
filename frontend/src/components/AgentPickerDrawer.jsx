@@ -7,6 +7,7 @@ export function AgentPickerDrawer({
   isLoading,
   mode,
   selectedAgentId,
+  smartAgent,
   tree,
   onClose,
   onSelectAgent,
@@ -84,6 +85,24 @@ export function AgentPickerDrawer({
             onChange={(event) => onSearchTextChange(event.target.value)}
           />
         </section>
+
+        {smartAgent ? (
+          <section className="agent-drawer-callout">
+            <div className="agent-drawer-callout-copy">
+              <span className="sidebar-label">Quick start</span>
+              <strong>{smartAgent.name}</strong>
+              <p>{smartAgent.description}</p>
+            </div>
+            <button
+              type="button"
+              className="sidebar-action agent-drawer-smart-button"
+              disabled={isLoading}
+              onClick={() => onSelectAgent(smartAgent.id)}
+            >
+              Use Smart Mode
+            </button>
+          </section>
+        ) : null}
 
         {isLoading ? (
           <div className="agent-drawer-search-note">Refreshing available agents and namespaces...</div>

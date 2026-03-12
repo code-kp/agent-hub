@@ -22,6 +22,109 @@ function normalizeText(text) {
   return String(text || "").replace(/\s+/g, " ").trim();
 }
 
+const EVENT_VISUALS = {
+  thinking: {
+    emoji: "💭",
+    kicker: "Thinking",
+    badge: "Thinking",
+    tone: "thinking",
+  },
+  reasoning: {
+    emoji: "🧭",
+    kicker: "Reasoning",
+    badge: "Reasoning",
+    tone: "reasoning",
+  },
+  tool: {
+    emoji: "🛠️",
+    kicker: "Tool use",
+    badge: "Tool use",
+    tone: "tool",
+  },
+  context: {
+    emoji: "📚",
+    kicker: "Context",
+    badge: "Context",
+    tone: "context",
+  },
+  model: {
+    emoji: "🤖",
+    kicker: "Model",
+    badge: "Model",
+    tone: "model",
+  },
+  agent: {
+    emoji: "🧩",
+    kicker: "Agent handoff",
+    badge: "Agent handoff",
+    tone: "agent",
+  },
+  issue: {
+    emoji: "⚠️",
+    kicker: "Issue",
+    badge: "Issue",
+    tone: "issue",
+  },
+  update: {
+    emoji: "•",
+    kicker: "Update",
+    badge: "Update",
+    tone: "thinking",
+  },
+};
+
+function getEventKind(event) {
+  if (!event) {
+    return "thinking";
+  }
+
+  if (event.type === "error" || event.state === "error") {
+    return "issue";
+  }
+
+  if (event.source === "model" || event.type === "model_started") {
+    return "model";
+  }
+
+  if (event.type === "tool_started" || event.type === "tool_completed") {
+    return "tool";
+  }
+
+  if (event.type === "tool_selection_reason") {
+    return "reasoning";
+  }
+
+  if (event.type === "skill_context_selected") {
+    return "context";
+  }
+
+  if (event.type === "thinking_step") {
+    const sourceAgentName = normalizeText(event.data?.source_agent_name || "");
+    const label = normalizeText(event.label || "").toLowerCase();
+    const detail = normalizeText(event.detail || "").toLowerCase();
+    const stepId = normalizeText(event.stepId || "").toLowerCase();
+
+    if (sourceAgentName) {
+      return "agent";
+    }
+
+    if (
+      stepId === "planning"
+      || /selecting|choosing|finalizing|deciding|routing|planner/.test(
+        `${stepId} ${label} ${detail}`,
+      )
+    ) {
+      return "reasoning";
+    }
+  }
+
+  return "thinking";
+}
+
+function getEventVisual(event) {
+  return EVENT_VISUALS[getEventKind(event)] || EVENT_VISUALS.update;
+}
+
 function narrationFromLabel(label) {
   const clean = String(label || "").trim();
   if (!clean) {
@@ -194,29 +297,27 @@ function getThinkingNarration(event) {
 
 function getEventKicker(event) {
   if (!event) {
-    return "Thinking";
+    return EVENT_VISUALS.thinking.kicker;
   }
-  if (event.source === "model") {
-    return "Model thought";
+
+  const visual = getEventVisual(event);
+  if (visual.tone === "agent") {
+    const sourceAgentName = normalizeText(event.data?.source_agent_name || "");
+    if (sourceAgentName) {
+      return `Agent · ${sourceAgentName}`;
+    }
   }
-  switch (event.type) {
-    case "thinking_step":
-      return "Thinking";
-    case "tool_selection_reason":
-      return "Why this step";
-    case "tool_started":
-      return "Running a tool";
-    case "tool_completed":
-      return "Tool result";
-    case "skill_context_selected":
-      return "Context";
-    case "model_started":
-      return "Model";
-    case "error":
-      return "Issue";
-    default:
-      return "Update";
+
+  return visual.kicker;
+}
+
+function getBadgeLabel(event, active) {
+  if (!event) {
+    return active ? "💭 Thinking" : "💭 Thoughts";
   }
+
+  const visual = getEventVisual(event);
+  return `${visual.emoji} ${visual.badge}`;
 }
 
 function getSupportingDetail(event, narration, expanded) {
@@ -232,8 +333,64 @@ function getSupportingDetail(event, narration, expanded) {
   return event.body || "";
 }
 
+function isTerminalSummaryEvent(event) {
+  if (!event || event.type !== "thinking_step" || event.state === "error") {
+    return false;
+  }
+
+  const stepId = normalizeText(event.stepId || "").toLowerCase();
+  const label = normalizeText(event.label || "").toLowerCase();
+  const detail = normalizeText(event.detail || "").toLowerCase();
+  const combined = `${stepId} ${label} ${detail}`;
+
+  return (
+    (stepId === "answer" && event.state === "done")
+    || /finaliz|answer ready|completed the response|response is complete|enough evidence to answer/.test(
+      combined,
+    )
+  );
+}
+
+function trimTrailingDuplicateNarrations(events) {
+  const trimmed = [...events];
+
+  while (trimmed.length > 1) {
+    const latestNarration = normalizeText(getThinkingNarration(trimmed[trimmed.length - 1]));
+    const previousNarration = normalizeText(getThinkingNarration(trimmed[trimmed.length - 2]));
+
+    if (!latestNarration || latestNarration !== previousNarration) {
+      break;
+    }
+
+    trimmed.splice(trimmed.length - 2, 1);
+  }
+
+  return trimmed;
+}
+
 function visibleHistoryEvents(events, expanded, active) {
-  const history = events.slice(0, -1);
+  const latest = events[events.length - 1] || null;
+  let history = expanded && !active ? [...events] : events.slice(0, -1);
+  const latestNarration = normalizeText(getThinkingNarration(latest));
+
+  if (!expanded && isTerminalSummaryEvent(latest)) {
+    while (history.length && isTerminalSummaryEvent(history[history.length - 1])) {
+      history = history.slice(0, -1);
+    }
+  }
+
+  if (!expanded) {
+    while (
+      history.length
+      && latestNarration
+      && normalizeText(getThinkingNarration(history[history.length - 1])) === latestNarration
+    ) {
+      history = history.slice(0, -1);
+    }
+  }
+
+  history = trimTrailingDuplicateNarrations(history);
+
   if (!history.length) {
     return history;
   }
@@ -250,12 +407,16 @@ export function ExecutionSteps({ events, active }) {
   const [expanded, setExpanded] = useState(false);
   const [isSettling, setIsSettling] = useState(false);
   const [isCollapsing, setIsCollapsing] = useState(false);
+  const [historyOverflow, setHistoryOverflow] = useState(false);
+  const [historyAtBottom, setHistoryAtBottom] = useState(true);
   const historyRef = useRef(null);
+  const previousExpandedRef = useRef(false);
   const collapseStartTimeoutRef = useRef(null);
   const collapseEndTimeoutRef = useRef(null);
   const previousActiveRef = useRef(active);
   const previousEventCountRef = useRef(events.length);
   const latestEvent = events[events.length - 1] || null;
+  const latestVisual = getEventVisual(latestEvent);
   const latestNarration = getThinkingNarration(latestEvent);
   const latestSupportingDetail = getSupportingDetail(latestEvent, latestNarration, expanded);
   const historyEvents = visibleHistoryEvents(events, expanded, active);
@@ -263,10 +424,25 @@ export function ExecutionSteps({ events, active }) {
   const showPanel = active || expanded || isSettling || isCollapsing;
   const showFocusedLayout = active || isSettling || isCollapsing;
   const showCollapsedSummary = !active && !expanded && !isSettling && !isCollapsing && events.length > 0;
+  const showCurrentStep = active || isSettling || isCollapsing || !expanded;
   const heading = active ? "Thinking through the request" : "Thought process";
   const summary = latestNarration || (active
     ? "I'm getting oriented before I answer."
     : "The response is complete.");
+
+  const syncHistoryViewport = () => {
+    const node = historyRef.current;
+    if (!node) {
+      setHistoryOverflow(false);
+      setHistoryAtBottom(true);
+      return;
+    }
+
+    const overflow = node.scrollHeight - node.clientHeight > 6;
+    const atBottom = !overflow || node.scrollTop + node.clientHeight >= node.scrollHeight - 6;
+    setHistoryOverflow(overflow);
+    setHistoryAtBottom(atBottom);
+  };
 
   const clearCollapseTimers = () => {
     window.clearTimeout(collapseStartTimeoutRef.current);
@@ -309,16 +485,65 @@ export function ExecutionSteps({ events, active }) {
   useEffect(() => {
     if (!historyRef.current || !historyEvents.length) {
       previousEventCountRef.current = events.length;
+      setHistoryOverflow(false);
+      setHistoryAtBottom(true);
       return;
     }
 
-    const behavior = showFocusedLayout && previousEventCountRef.current > 0 ? "smooth" : "auto";
-    historyRef.current.scrollTo({
-      top: historyRef.current.scrollHeight,
-      behavior,
-    });
+    if (showFocusedLayout) {
+      const behavior = previousEventCountRef.current > 0 ? "smooth" : "auto";
+      historyRef.current.scrollTo({
+        top: historyRef.current.scrollHeight,
+        behavior,
+      });
+    }
+    syncHistoryViewport();
     previousEventCountRef.current = events.length;
   }, [events.length, historyEvents.length, latestNarration, showFocusedLayout]);
+
+  useEffect(() => {
+    if (
+      expanded
+      && !active
+      && !previousExpandedRef.current
+      && historyRef.current
+    ) {
+      historyRef.current.scrollTo({
+        top: 0,
+        behavior: "auto",
+      });
+      syncHistoryViewport();
+    }
+
+    previousExpandedRef.current = expanded;
+  }, [expanded, active, historyEvents.length]);
+
+  useEffect(() => {
+    const node = historyRef.current;
+    if (!node) {
+      setHistoryOverflow(false);
+      setHistoryAtBottom(true);
+      return undefined;
+    }
+
+    syncHistoryViewport();
+
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(() => {
+        syncHistoryViewport();
+      });
+      observer.observe(node);
+      return () => observer.disconnect();
+    }
+
+    const handleResize = () => {
+      syncHistoryViewport();
+    };
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [historyEvents.length, expanded, active, latestNarration, latestSupportingDetail]);
 
   useEffect(() => {
     if (active) {
@@ -366,8 +591,13 @@ export function ExecutionSteps({ events, active }) {
       <div className={showFocusedLayout ? "execution-panel live execution-panel-thoughts" : "execution-panel execution-panel-thoughts"}>
         <header className="execution-header execution-header-thinking">
           <div className="execution-status">
-            <span className={active ? "execution-badge live" : "execution-badge"}>
-              {active ? "Thinking" : "Thoughts"}
+            <span className={[
+              "execution-badge",
+              active ? "live" : "",
+              `event-${latestVisual.tone}`,
+            ].filter(Boolean).join(" ")}
+            >
+              {getBadgeLabel(latestEvent, active)}
             </span>
             <div className="execution-summary">
               <strong>{heading}</strong>
@@ -391,43 +621,46 @@ export function ExecutionSteps({ events, active }) {
           </div>
         </header>
 
-        <div className={[
-          "execution-current",
-          active ? "live" : "",
-          latestEvent?.source === "model" ? "model" : "",
-          latestEvent?.state === "error" || latestEvent?.type === "error" ? "error" : "",
-        ].filter(Boolean).join(" ")}
-        >
-          <div
-            className="execution-current-body execution-current-thought"
-            key={`${latestEvent?.id || "idle"}:${latestNarration}`}
+        {showCurrentStep ? (
+          <div className={[
+            "execution-current",
+            active ? "live" : "",
+            `event-${latestVisual.tone}`,
+          ].filter(Boolean).join(" ")}
           >
-            <div className="execution-current-topline">
-              <span className="execution-current-kicker">
-                <span className="execution-current-indicator" aria-hidden="true" />
-                {getEventKicker(latestEvent)}
-              </span>
-              {latestEvent?.timestamp ? (
-                <time dateTime={toDateTimeAttr(latestEvent.timestamp)}>
-                  {formatTime(latestEvent.timestamp, { withSeconds: true })}
-                </time>
+            <div
+              className="execution-current-body execution-current-thought"
+              key={`${latestEvent?.id || "idle"}:${latestNarration}`}
+            >
+              <div className="execution-current-topline">
+                <span className="execution-current-kicker">
+                  <span className={`execution-event-icon event-${latestVisual.tone}`} aria-hidden="true">
+                    {latestVisual.emoji}
+                  </span>
+                  {getEventKicker(latestEvent)}
+                </span>
+                {latestEvent?.timestamp ? (
+                  <time dateTime={toDateTimeAttr(latestEvent.timestamp)}>
+                    {formatTime(latestEvent.timestamp, { withSeconds: true })}
+                  </time>
+                ) : null}
+              </div>
+              <div className="execution-current-voice">
+                <MarkdownContent text={summary} />
+              </div>
+              {latestSupportingDetail ? (
+                <div className="execution-detail">
+                  <MarkdownContent text={latestSupportingDetail} />
+                </div>
               ) : null}
             </div>
-            <div className="execution-current-voice">
-              <MarkdownContent text={summary} />
-            </div>
-            {latestSupportingDetail ? (
-              <div className="execution-detail">
-                <MarkdownContent text={latestSupportingDetail} />
-              </div>
-            ) : null}
           </div>
-        </div>
+        ) : null}
 
         {historyEvents.length ? (
           <div className="execution-history">
             <div className="execution-history-header">
-              <span>Earlier thoughts</span>
+              <span>Earlier steps</span>
               {hiddenCount > 0 ? (
                 <button
                   type="button"
@@ -438,33 +671,57 @@ export function ExecutionSteps({ events, active }) {
                 </button>
               ) : null}
             </div>
-            <ol className="execution-history-list" ref={historyRef}>
-              {historyEvents.map((event) => {
-                const narration = getThinkingNarration(event);
-                const supportingDetail = getSupportingDetail(event, narration, expanded);
+            <div
+              className={[
+                "execution-history-scroller",
+                historyOverflow ? "scrollable" : "",
+                historyOverflow && !historyAtBottom ? "has-more-below" : "",
+              ].filter(Boolean).join(" ")}
+            >
+              <ol
+                className="execution-history-list"
+                ref={historyRef}
+                onScroll={syncHistoryViewport}
+              >
+                {historyEvents.map((event) => {
+                  const eventVisual = getEventVisual(event);
+                  const narration = getThinkingNarration(event);
+                  const supportingDetail = getSupportingDetail(event, narration, expanded);
 
-                return (
-                  <li key={event.id} className="execution-history-item">
-                    <div className="execution-history-voice">
-                      <MarkdownContent text={narration} />
-                    </div>
-                    <div className="execution-history-meta">
-                      <span>{getEventKicker(event)}</span>
-                      {event.timestamp ? (
-                        <time dateTime={toDateTimeAttr(event.timestamp)}>
-                          {formatTime(event.timestamp, { withSeconds: true })}
-                        </time>
-                      ) : null}
-                    </div>
-                    {supportingDetail ? (
-                      <div className="execution-detail">
-                        <MarkdownContent text={supportingDetail} />
+                  return (
+                    <li key={event.id} className={`execution-history-item event-${eventVisual.tone}`}>
+                      <div className="execution-history-voice">
+                        <MarkdownContent text={narration} />
                       </div>
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ol>
+                      <div className="execution-history-meta">
+                        <span className="execution-history-kicker">
+                          <span className={`execution-event-icon event-${eventVisual.tone}`} aria-hidden="true">
+                            {eventVisual.emoji}
+                          </span>
+                          {getEventKicker(event)}
+                        </span>
+                        {event.timestamp ? (
+                          <time dateTime={toDateTimeAttr(event.timestamp)}>
+                            {formatTime(event.timestamp, { withSeconds: true })}
+                          </time>
+                        ) : null}
+                      </div>
+                      {supportingDetail ? (
+                        <div className="execution-detail">
+                          <MarkdownContent text={supportingDetail} />
+                        </div>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ol>
+              {historyOverflow && !historyAtBottom ? (
+                <div className="execution-history-scroll-hint" aria-hidden="true">
+                  <span>Scroll for more</span>
+                  <span className="execution-history-scroll-arrow">↓</span>
+                </div>
+              ) : null}
+            </div>
           </div>
         ) : null}
       </div>
@@ -472,10 +729,10 @@ export function ExecutionSteps({ events, active }) {
       {showCollapsedSummary ? (
         <button
           type="button"
-          className="execution-collapsed"
+          className={`execution-collapsed event-${latestVisual.tone}`}
           onClick={() => setExpanded(true)}
         >
-          <span>Thinking</span>
+          <span>{getBadgeLabel(latestEvent, active)}</span>
           <strong>{summary}</strong>
           <span>Open</span>
         </button>

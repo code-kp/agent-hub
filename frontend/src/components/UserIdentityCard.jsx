@@ -24,7 +24,7 @@ export function UserIdentityCard({
 
     onUserIdChange(nextValue);
     setError("");
-    setStatus("Saved. Chats and uploaded knowledge now use this user ID.");
+    setStatus("Saved. Chats and uploaded skills now use this user ID.");
   };
 
   return (
@@ -32,7 +32,7 @@ export function UserIdentityCard({
       <div className="settings-card-header">
         <div>
           <h3>User identity</h3>
-          <p>Chats and uploaded knowledge are scoped to this user ID across all agents.</p>
+          <p>Chats and uploaded skills are scoped to this user ID across all agents.</p>
         </div>
         <span className="settings-chip">{userId}</span>
       </div>
@@ -50,14 +50,14 @@ export function UserIdentityCard({
               setStatus("");
             }}
           />
-          <small>Use the same value for chat and uploads if you want that knowledge available in conversations.</small>
+          <small>Use the same value for chat and uploads if you want those skills available in conversations.</small>
         </label>
 
         <div className="knowledge-upload-actions">
           <div className="knowledge-upload-status" aria-live="polite">
             {error ? <span className="knowledge-upload-error">{error}</span> : null}
             {!error && status ? <span>{status}</span> : null}
-            {!error && !status ? <span>Uploaded markdown is visible only to this user ID, across all agents.</span> : null}
+            {!error && !status ? <span>Uploaded markdown skills are visible only to this user ID, across all agents.</span> : null}
           </div>
           <button type="submit" className="sidebar-action">
             Save user ID

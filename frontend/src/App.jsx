@@ -20,6 +20,7 @@ import {
   sanitizeUserId,
 } from "./lib/preferences";
 import { useWorkspaceChat } from "./hooks/useWorkspaceChat";
+import { SMART_AGENT_ID } from "./lib/chatWorkspace";
 import {
   THEME_MODE_STORAGE_KEY,
   applyTheme,
@@ -80,6 +81,7 @@ export function App() {
     activeRuntimeMode,
     activeChat,
     activeSessionId,
+    agents,
     agentDirectoryLoading,
     chats,
     error,
@@ -105,6 +107,10 @@ export function App() {
     searchText,
     setSearchText,
   } = useWorkspaceChat(userId, responseStreaming, effectiveModelId);
+  const smartAgent = React.useMemo(
+    () => agents.find((item) => item.id === SMART_AGENT_ID) || null,
+    [agents],
+  );
 
   React.useEffect(() => {
     applyTheme(themeMode);
@@ -275,6 +281,22 @@ export function App() {
 
     closeAgentPicker();
   }, [agentPickerMode, closeAgentPicker, onNewChat, onSelectAgent]);
+  const handleStartSmartChat = React.useCallback(() => {
+    if (!smartAgent) {
+      return;
+    }
+    onNewChat(smartAgent.id);
+  }, [onNewChat, smartAgent]);
+  const handleUseSmartAgent = React.useCallback(() => {
+    if (!smartAgent) {
+      return;
+    }
+    if (activeChat?.id) {
+      onSelectAgent(smartAgent.id);
+      return;
+    }
+    onNewChat(smartAgent.id);
+  }, [activeChat?.id, onNewChat, onSelectAgent, smartAgent]);
 
   const handleSidebarResizeStart = React.useCallback((event) => {
     if (window.innerWidth <= 1100 || event.button !== 0) {
@@ -346,6 +368,7 @@ export function App() {
         onCollapse={() => setIsSidebarCollapsed(true)}
         onDeleteChat={onDeleteChat}
         onNewChat={openAgentPickerForNewChat}
+        onStartSmartChat={handleStartSmartChat}
         onOpenSettings={openSettings}
         onRenameChat={onRenameChat}
         onSelectChat={onSelectChat}
@@ -391,8 +414,11 @@ export function App() {
             onOpenAgentPicker={openAgentPickerForSwitch}
             onRefreshTitle={onRefreshTitle}
             onSetRuntimeMode={onSetRuntimeMode}
+            onUseSmartAgent={handleUseSmartAgent}
             onToggleSidebar={() => setIsSidebarCollapsed((current) => !current)}
             onSend={onSend}
+            showSmartAction={Boolean(smartAgent)}
+            smartAgentActive={activeAgentId === SMART_AGENT_ID}
           />
         </ErrorBoundary>
       </section>
@@ -402,6 +428,7 @@ export function App() {
         isLoading={agentDirectoryLoading}
         mode={agentPickerMode}
         selectedAgentId={agentPickerMode === "switch" ? activeAgentId : ""}
+        smartAgent={smartAgent}
         tree={filteredTree}
         onClose={closeAgentPicker}
         onSelectAgent={handleAgentPickerSelect}

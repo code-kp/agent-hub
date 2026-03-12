@@ -37,7 +37,10 @@ export function ChatPanel({
   onRefreshTitle,
   onSetRuntimeMode,
   onToggleSidebar,
+  onUseSmartAgent,
   onSend,
+  showSmartAction,
+  smartAgentActive,
 }) {
   const [sessionCopied, setSessionCopied] = React.useState(false);
   const hasActiveAgent = Boolean(agentName || agentId);
@@ -50,12 +53,13 @@ export function ChatPanel({
     : "Start a conversation";
   const sidebarToggleLabel = sidebarCollapsed ? "Show conversations" : "Hide conversations";
   const hasSessionId = Boolean(String(sessionId || "").trim());
+  const showSessionChip = hasActiveAgent && (sessionLoading || hasSessionId);
   const sessionValue = sessionLoading
     ? "Loading..."
-    : (formatSessionId(sessionId) || "Not started");
+    : formatSessionId(sessionId);
   const sessionTitle = hasSessionId
     ? (sessionCopied ? "Session id copied" : `Click to copy session id: ${sessionId}`)
-    : "A session id will appear after the first successful run.";
+    : "Loading session id.";
 
   React.useEffect(() => {
     if (!sessionCopied) {
@@ -138,7 +142,7 @@ export function ChatPanel({
               ) : null}
             </div>
             <div className="workspace-header-actions">
-              {hasActiveAgent ? (
+              {showSessionChip ? (
                 <button
                   type="button"
                   className={[
@@ -179,6 +183,16 @@ export function ChatPanel({
             >
               {hasActiveAgent ? "Edit" : "Choose"}
             </button>
+            {showSmartAction ? (
+              <button
+                type="button"
+                className="agent-edit-button smart-agent-button"
+                disabled={isSending || smartAgentActive}
+                onClick={onUseSmartAgent}
+              >
+                {smartAgentActive ? "Smart active" : "Use Smart"}
+              </button>
+            ) : null}
           </div>
           {agentDescription ? <p className="workspace-agent-description">{agentDescription}</p> : null}
         </div>

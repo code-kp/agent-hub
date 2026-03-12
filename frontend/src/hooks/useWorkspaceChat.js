@@ -89,6 +89,7 @@ export function useWorkspaceChat(userId, responseStreaming, modelId) {
       id: String(chat.id || crypto.randomUUID()),
       title: String(chat.title || buildChatTitle(agentId, availableAgents, [])),
       titleSource: String(chat.titleSource || "default"),
+      lastSessionId: String(chat.lastSessionId || "").trim(),
       agentId,
       runtimeMode: resolveChatRuntimeMode(agent, chat.runtimeMode),
       messages: normalizedMessages,
@@ -249,6 +250,7 @@ export function useWorkspaceChat(userId, responseStreaming, modelId) {
     () => resolveChatRuntimeMode(activeAgent, activeChat?.runtimeMode || ""),
     [activeAgent, activeChat?.runtimeMode],
   );
+  const fallbackSessionId = String(activeChat?.lastSessionId || "").trim();
   const orchestrationAvailable = agentSupportsOrchestration(activeAgent);
   const isSending = activeChat ? runningChatIds.has(activeChat.id) : false;
   const isRefreshingTitle = activeChat ? retitlingChatIds.has(activeChat.id) : false;
@@ -269,6 +271,7 @@ export function useWorkspaceChat(userId, responseStreaming, modelId) {
 
     const requestId = sessionRequestRef.current + 1;
     sessionRequestRef.current = requestId;
+    setActiveSessionId(fallbackSessionId);
     setSessionLoading(true);
 
     void fetchConversationSession({
@@ -282,14 +285,14 @@ export function useWorkspaceChat(userId, responseStreaming, modelId) {
         return;
       }
 
-      setActiveSessionId(String(payload?.session_id || "").trim());
+      setActiveSessionId(String(payload?.session_id || fallbackSessionId).trim());
       setSessionLoading(false);
     }).catch(() => {
       if (sessionRequestRef.current !== requestId) {
         return;
       }
 
-      setActiveSessionId("");
+      setActiveSessionId(fallbackSessionId);
       setSessionLoading(false);
     });
 
@@ -298,7 +301,7 @@ export function useWorkspaceChat(userId, responseStreaming, modelId) {
         sessionRequestRef.current += 1;
       }
     };
-  }, [activeChat?.id, activeAgentId, activeRuntimeMode, modelId, userId]);
+  }, [activeChat?.id, activeAgentId, activeRuntimeMode, fallbackSessionId, modelId, userId]);
 
   const updateChat = (chatId, updater) => {
     setChats((prev) => prev.map((chat) => (chat.id === chatId ? updater(chat) : chat)));
@@ -663,6 +666,16 @@ export function useWorkspaceChat(userId, responseStreaming, modelId) {
           }
 
           if (type === "run_started") {
+            if (payload.session_id) {
+              const nextSessionId = String(payload.session_id).trim();
+              setActiveSessionId(nextSessionId);
+              setSessionLoading(false);
+              updateChat(chatId, (chat) => ({
+                ...chat,
+                lastSessionId: nextSessionId,
+                updatedAt: Date.now(),
+              }));
+            }
             updateMessage(chatId, assistantMessage.id, (current) => ({
               ...current,
               thinkingActive: true,
@@ -713,6 +726,11 @@ export function useWorkspaceChat(userId, responseStreaming, modelId) {
         },
       });
       if (result?.sessionId) {
+        updateChat(chatId, (chat) => ({
+          ...chat,
+          lastSessionId: String(result.sessionId).trim(),
+          updatedAt: Date.now(),
+        }));
         sessionRequestRef.current += 1;
         setActiveSessionId(String(result.sessionId).trim());
         setSessionLoading(false);

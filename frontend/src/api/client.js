@@ -178,11 +178,13 @@ export async function fetchHealth({ timeoutMs = HEALTH_TIMEOUT_MS } = {}) {
 
 export async function uploadSkillFile({
   file,
+  skillClass = "knowledge",
   namespace = "",
   userId = "browser-user",
 }) {
   const body = new FormData();
   body.set("file", file);
+  body.set("skill_class", skillClass);
   body.set("user_id", userId);
   body.set("namespace", namespace);
 

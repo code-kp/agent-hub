@@ -9,7 +9,7 @@ const SETTINGS_TABS = [
   { id: "appearance", label: "Appearance" },
   { id: "responses", label: "Responses" },
   { id: "identity", label: "Identity" },
-  { id: "knowledge", label: "Knowledge" },
+  { id: "knowledge", label: "Skill upload" },
 ];
 
 export function SettingsModal({
@@ -108,7 +108,7 @@ export function SettingsModal({
           <div>
             <span className="sidebar-label">Workspace</span>
             <h2>Workspace settings</h2>
-            <p>Manage appearance, identity, and shared knowledge in one place without crowding the chat workspace.</p>
+            <p>Manage appearance, identity, and shared skills in one place without crowding the chat workspace.</p>
           </div>
           <button type="button" className="sidebar-action" onClick={onClose}>
             Close

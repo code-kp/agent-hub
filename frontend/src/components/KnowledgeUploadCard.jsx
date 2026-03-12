@@ -15,9 +15,8 @@ function formatFileList(files) {
 export function KnowledgeUploadCard({ userId }) {
   const fileInputRef = React.useRef(null);
   const [files, setFiles] = React.useState([]);
+  const [skillType, setSkillType] = React.useState("knowledge");
   const [namespace, setNamespace] = React.useState("");
-  const [tags, setTags] = React.useState("");
-  const [triggers, setTriggers] = React.useState("");
   const [isUploading, setIsUploading] = React.useState(false);
   const [statusText, setStatusText] = React.useState("");
   const [results, setResults] = React.useState([]);
@@ -64,9 +63,8 @@ export function KnowledgeUploadCard({ userId }) {
         try {
           const payload = await uploadSkillFile({
             file,
+            skillClass: skillType,
             namespace,
-            tags,
-            triggers,
             userId,
           });
           uploaded.push({
@@ -88,7 +86,7 @@ export function KnowledgeUploadCard({ userId }) {
       setStatusText(
         failures
           ? `Uploaded ${uploaded.length - failures} of ${uploaded.length} file(s).`
-          : `Uploaded ${uploaded.length} file(s) to the user-scoped knowledge library.`,
+          : `Uploaded ${uploaded.length} file(s) to the user-scoped skill library.`,
       );
       setIsUploading(false);
       if (failures) {
@@ -106,8 +104,8 @@ export function KnowledgeUploadCard({ userId }) {
     <section className="settings-card knowledge-upload-card">
       <div className="settings-card-header">
         <div>
-          <h3>Knowledge uploads</h3>
-          <p>Upload markdown once and make it available to all agents for this user ID.</p>
+          <h3>Skill uploads</h3>
+          <p>Upload markdown skills once and make them available to all agents for this user ID.</p>
         </div>
         <span className="settings-chip">{userId}</span>
       </div>
@@ -125,7 +123,20 @@ export function KnowledgeUploadCard({ userId }) {
               onChange={onFilesChange}
             />
             <strong>{formatFileList(files)}</strong>
-            <small>Files are stored under <code>src/workspace/skills/uploads/...</code> and scoped to this user ID.</small>
+            <small>Upload one or more markdown files to add user-scoped skills.</small>
+          </label>
+
+          <label className="knowledge-upload-field">
+            <span>Skill type</span>
+            <select
+              value={skillType}
+              disabled={isUploading}
+              onChange={(event) => setSkillType(event.target.value)}
+            >
+              <option value="knowledge">Knowledge</option>
+              <option value="behavior">Behavior</option>
+            </select>
+            <small>Choose whether this should be categorized as knowledge or behavior. Backend enforcement for uploaded behavior skills is not wired yet.</small>
           </label>
 
           <label className="knowledge-upload-field">
@@ -139,40 +150,16 @@ export function KnowledgeUploadCard({ userId }) {
             />
             <small>Optional. Helps group uploaded skills under a stable path.</small>
           </label>
-
-          <label className="knowledge-upload-field">
-            <span>Tags</span>
-            <input
-              type="text"
-              placeholder="billing, refund"
-              value={tags}
-              disabled={isUploading}
-              onChange={(event) => setTags(event.target.value)}
-            />
-            <small>Optional. Comma-separated tags improve retrieval.</small>
-          </label>
-
-          <label className="knowledge-upload-field">
-            <span>Triggers</span>
-            <input
-              type="text"
-              placeholder="refund, annual plan"
-              value={triggers}
-              disabled={isUploading}
-              onChange={(event) => setTriggers(event.target.value)}
-            />
-            <small>Optional. Add phrases that should make the skill easier to match.</small>
-          </label>
         </div>
 
         <div className="knowledge-upload-actions">
           <div className="knowledge-upload-status" aria-live="polite">
             {error ? <span className="knowledge-upload-error">{error}</span> : null}
             {!error && statusText ? <span>{statusText}</span> : null}
-            {!error && !statusText ? <span>Uploaded knowledge is shared across all agents for user <strong>{userId}</strong>.</span> : null}
+            {!error && !statusText ? <span>Uploaded skills are shared across all agents for user <strong>{userId}</strong>.</span> : null}
           </div>
           <button type="submit" className="sidebar-action knowledge-upload-submit" disabled={!files.length || isUploading}>
-            {isUploading ? "Uploading..." : "Upload knowledge"}
+            {isUploading ? "Uploading..." : "Upload skills"}
           </button>
         </div>
       </form>

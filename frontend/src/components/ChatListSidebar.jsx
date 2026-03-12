@@ -34,6 +34,7 @@ export function ChatListSidebar({
   onDeleteChat,
   onSelectChat,
   onNewChat,
+  onStartSmartChat,
   onOpenSettings,
   onRenameChat,
 }) {
@@ -144,6 +145,9 @@ export function ChatListSidebar({
             <button type="button" className="sidebar-action" onClick={onNewChat}>
               New
             </button>
+            <button type="button" className="sidebar-action sidebar-smart-button" onClick={onStartSmartChat}>
+              Smart
+            </button>
             <button
               type="button"
               className="sidebar-action sidebar-collapse-button"
@@ -241,14 +245,14 @@ export function ChatListSidebar({
               );
             })
           ) : (
-            <div className="chat-sidebar-empty">Choose an agent to start your first conversation.</div>
+            <div className="chat-sidebar-empty">Start with Smart or choose any agent for your first conversation.</div>
           )}
         </div>
 
         <footer className="sidebar-footer">
           <div className="sidebar-footer-copy">
             <span className="sidebar-footer-label">Workspace</span>
-            <span className="sidebar-footer-text">Identity, appearance, and knowledge</span>
+            <span className="sidebar-footer-text">Identity, appearance, and skills</span>
           </div>
           <button type="button" className="sidebar-action sidebar-settings-button" onClick={onOpenSettings}>
             Open settings

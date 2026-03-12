@@ -8,6 +8,7 @@ export function NavigationRail({
   onCollapse,
   onDeleteChat,
   onNewChat,
+  onStartSmartChat,
   onOpenSettings,
   onRenameChat,
   onSelectChat,
@@ -21,6 +22,7 @@ export function NavigationRail({
         onDeleteChat={onDeleteChat}
         onSelectChat={onSelectChat}
         onNewChat={onNewChat}
+        onStartSmartChat={onStartSmartChat}
         onOpenSettings={onOpenSettings}
         onRenameChat={onRenameChat}
       />
