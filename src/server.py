@@ -15,6 +15,10 @@ from pydantic import BaseModel
 
 from api import api as service
 from api import service as platform_service
+from core.execution.shared.request_context import (
+    bind_conversation_id,
+    reset_conversation_id,
+)
 from services.ai import AiService, AiServiceError
 from services.conversations import ConversationStore
 
@@ -84,6 +88,48 @@ async def conversations(user_id: str = "browser-user") -> JSONResponse:
     return JSONResponse({"chats": conversation_store.list_chats(user_id)})
 
 
+@app.get("/api/conversations/session")
+async def conversation_session(
+    user_id: str = "browser-user",
+    conversation_id: str = "",
+    agent_id: str = "",
+    mode: Optional[str] = None,
+    model_id: Optional[str] = None,
+    model_name: Optional[str] = None,
+) -> JSONResponse:
+    normalized_conversation_id = conversation_id.strip()
+    normalized_agent_id = agent_id.strip()
+    if not normalized_conversation_id or not normalized_agent_id:
+        return JSONResponse({"session_id": None})
+
+    try:
+        selected_model_name = service.resolve_model_name(
+            model_id=model_id,
+            model_name=model_name,
+        )
+        resolved_agent_id, resolved_mode, _runtime = platform_service.resolve_runtime(
+            normalized_agent_id,
+            mode=mode,
+            model_name=selected_model_name,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return JSONResponse(
+        {
+            "session_id": conversation_store.session_id(
+                user_id=user_id,
+                conversation_id=normalized_conversation_id,
+                agent_id=resolved_agent_id,
+                mode=resolved_mode,
+                model_name=selected_model_name,
+            )
+        }
+    )
+
+
 @app.put("/api/conversations")
 async def save_conversations(payload: ConversationsRequest) -> JSONResponse:
     conversation_store.save_chats(payload.user_id, payload.chats)
@@ -97,24 +143,48 @@ async def stream_chat(payload: ChatRequest) -> StreamingResponse:
             model_id=payload.model_id,
             model_name=payload.model_name,
         )
+        resolved_agent_id, resolved_mode, _runtime = platform_service.resolve_runtime(
+            payload.agent_id,
+            mode=payload.mode,
+            model_name=selected_model_name,
+        )
         stored_history = conversation_store.conversation_history(
             user_id=payload.user_id,
             conversation_id=payload.conversation_id,
+        )
+        stored_session_id = payload.session_id or conversation_store.session_id(
+            user_id=payload.user_id,
+            conversation_id=payload.conversation_id,
+            agent_id=resolved_agent_id,
+            mode=resolved_mode,
+            model_name=selected_model_name,
         )
         request_history = (
             [item.model_dump() for item in payload.history]
             if payload.history
             else None
         )
-        agent_id, mode, session_id, stream = await service.stream_chat(
-            agent_id=payload.agent_id,
-            mode=payload.mode,
-            model_name=selected_model_name,
-            message=payload.message,
+        conversation_token = bind_conversation_id(payload.conversation_id)
+        try:
+            agent_id, mode, session_id, stream = await service.stream_chat(
+                agent_id=payload.agent_id,
+                mode=payload.mode,
+                model_name=selected_model_name,
+                message=payload.message,
+                user_id=payload.user_id,
+                session_id=stored_session_id,
+                history=stored_history or request_history,
+                stream=payload.stream,
+            )
+        finally:
+            reset_conversation_id(conversation_token)
+        conversation_store.save_session_id(
             user_id=payload.user_id,
-            session_id=payload.session_id,
-            history=stored_history or request_history,
-            stream=payload.stream,
+            conversation_id=payload.conversation_id,
+            agent_id=agent_id,
+            mode=mode,
+            model_name=selected_model_name,
+            session_id=session_id,
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc))

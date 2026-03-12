@@ -1,10 +1,13 @@
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
 import core.contracts.models as contract_models
 import server
+from services.conversations import ConversationStore
 
 
 class ServerUploadTest(unittest.TestCase):
@@ -105,6 +108,175 @@ class ServerUploadTest(unittest.TestCase):
             history=None,
             stream=True,
         )
+
+    def test_conversation_session_endpoint_returns_server_side_session(
+        self,
+    ) -> None:
+        client = TestClient(server.app)
+
+        with TemporaryDirectory() as temp_dir:
+            store = ConversationStore(Path(temp_dir))
+            store.save_chats(
+                "browser-user",
+                [
+                    {
+                        "id": "chat-1",
+                        "agentId": "web.answer",
+                        "messages": [],
+                    }
+                ],
+            )
+            store.save_session_id(
+                user_id="browser-user",
+                conversation_id="chat-1",
+                agent_id="web.answer",
+                mode="direct",
+                model_name="gemini-2.0-flash",
+                session_id="session-1",
+            )
+
+            original_store = server.conversation_store
+            server.conversation_store = store
+            try:
+                with patch.object(
+                    server.service,
+                    "resolve_model_name",
+                    return_value="gemini-2.0-flash",
+                ) as resolve_model_name:
+                    with patch.object(
+                        server.platform_service,
+                        "resolve_runtime",
+                        return_value=("web.answer", "direct", object()),
+                    ) as resolve_runtime:
+                        response = client.get(
+                            "/api/conversations/session",
+                            params={
+                                "user_id": "browser-user",
+                                "conversation_id": "chat-1",
+                                "agent_id": "web.answer",
+                                "mode": "direct",
+                                "model_name": "gemini-2.0-flash",
+                            },
+                        )
+            finally:
+                server.conversation_store = original_store
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["session_id"], "session-1")
+            resolve_model_name.assert_called_once_with(
+                model_id=None,
+                model_name="gemini-2.0-flash",
+            )
+            resolve_runtime.assert_called_once_with(
+                "web.answer",
+                mode="direct",
+                model_name="gemini-2.0-flash",
+            )
+
+    def test_chat_stream_endpoint_reuses_server_side_session_for_conversation(
+        self,
+    ) -> None:
+        client = TestClient(server.app)
+
+        async def fake_stream():
+            yield 'event: assistant_message\ndata: {"text":"done"}\n\n'
+
+        with TemporaryDirectory() as temp_dir:
+            store = ConversationStore(Path(temp_dir))
+            store.save_chats(
+                "browser-user",
+                [
+                    {
+                        "id": "chat-1",
+                        "agentId": "web.answer",
+                        "messages": [
+                            {"role": "user", "text": "Earlier question"},
+                            {"role": "assistant", "text": "Earlier answer"},
+                        ],
+                    }
+                ],
+            )
+            store.save_session_id(
+                user_id="browser-user",
+                conversation_id="chat-1",
+                agent_id="web.answer",
+                mode="orchestrated",
+                model_name="gemini-2.0-flash",
+                session_id="session-1",
+            )
+
+            original_store = server.conversation_store
+            server.conversation_store = store
+            try:
+                with patch.object(
+                    server.service,
+                    "resolve_model_name",
+                    return_value="gemini-2.0-flash",
+                ) as resolve_model_name:
+                    with patch.object(
+                        server.platform_service,
+                        "resolve_runtime",
+                        return_value=("web.answer", "orchestrated", object()),
+                    ) as resolve_runtime:
+                        with patch.object(
+                            server.service,
+                            "stream_chat",
+                            AsyncMock(
+                                return_value=(
+                                    "web.answer",
+                                    "orchestrated",
+                                    "session-2",
+                                    fake_stream(),
+                                )
+                            ),
+                        ) as stream_chat:
+                            response = client.post(
+                                "/api/chat/stream",
+                                json={
+                                    "agent_id": "web.answer",
+                                    "mode": "orchestrated",
+                                    "model_name": "gemini-2.0-flash",
+                                    "conversation_id": "chat-1",
+                                    "message": "hello",
+                                },
+                            )
+            finally:
+                server.conversation_store = original_store
+
+            self.assertEqual(response.status_code, 200)
+            resolve_model_name.assert_called_once_with(
+                model_id=None,
+                model_name="gemini-2.0-flash",
+            )
+            resolve_runtime.assert_called_once_with(
+                "web.answer",
+                mode="orchestrated",
+                model_name="gemini-2.0-flash",
+            )
+            stream_chat.assert_awaited_once_with(
+                agent_id="web.answer",
+                mode="orchestrated",
+                model_name="gemini-2.0-flash",
+                message="hello",
+                user_id="browser-user",
+                session_id="session-1",
+                history=[
+                    {"role": "user", "text": "Earlier question"},
+                    {"role": "assistant", "text": "Earlier answer"},
+                ],
+                stream=True,
+            )
+            self.assertEqual(response.headers["x-session-id"], "session-2")
+            self.assertEqual(
+                store.session_id(
+                    user_id="browser-user",
+                    conversation_id="chat-1",
+                    agent_id="web.answer",
+                    mode="orchestrated",
+                    model_name="gemini-2.0-flash",
+                ),
+                "session-2",
+            )
 
     def test_ai_endpoint_routes_conversation_title_task(self) -> None:
         client = TestClient(server.app)

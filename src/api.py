@@ -117,6 +117,7 @@ class AgentApi:
         message: str,
         user_id: str,
         session_id: Optional[str],
+        conversation_id: Optional[str] = None,
         history: Optional[List[Dict[str, Any]]] = None,
         stream: bool = True,
     ):
@@ -127,6 +128,7 @@ class AgentApi:
             message=message,
             user_id=user_id,
             session_id=session_id,
+            conversation_id=conversation_id,
             history=history,
             stream=stream,
         )

@@ -189,7 +189,6 @@ export function createChat(agentId, agents, chats) {
     titleSource: "default",
     agentId,
     runtimeMode: resolveChatRuntimeMode(agent),
-    sessionIds: {},
     messages: [],
     updatedAt: Date.now(),
   };

@@ -19,15 +19,32 @@ class ConversationStore:
         chats = payload.get("chats")
         if not isinstance(chats, list):
             return []
-        return [item for item in chats if isinstance(item, dict)]
+        return [self._normalize_chat(item) for item in chats if isinstance(item, dict)]
 
     def save_chats(self, user_id: str, chats: list[dict[str, Any]]) -> None:
-        normalized_chats = [item for item in chats if isinstance(item, dict)]
+        normalized_chats = [
+            self._normalize_chat(item) for item in chats if isinstance(item, dict)
+        ]
+        existing_payload = self._read_user_payload(user_id)
         payload = {
+            **{
+                key: value
+                for key, value in existing_payload.items()
+                if key not in {"user_id", "chats", "sessions"}
+            },
             "user_id": str(user_id or "").strip() or "browser-user",
             "chats": normalized_chats,
+            "sessions": self._prune_sessions(
+                existing_payload.get("sessions"),
+                {
+                    str(chat.get("id") or "").strip()
+                    for chat in normalized_chats
+                    if str(chat.get("id") or "").strip()
+                },
+            ),
         }
         self._write_user_payload(user_id, payload)
+        self._mark_embeddings_dirty(user_id)
 
     def get_chat(
         self,
@@ -74,6 +91,87 @@ class ConversationStore:
             return history[-limit:]
         return history
 
+    def session_id(
+        self,
+        *,
+        user_id: str,
+        conversation_id: str | None,
+        agent_id: str,
+        mode: str,
+        model_name: str | None = None,
+    ) -> str | None:
+        normalized_conversation_id = str(conversation_id or "").strip()
+        if not normalized_conversation_id:
+            return None
+
+        payload = self._read_user_payload(user_id)
+        sessions = payload.get("sessions")
+        if not isinstance(sessions, dict):
+            return None
+
+        conversation_sessions = sessions.get(normalized_conversation_id)
+        if not isinstance(conversation_sessions, dict):
+            return None
+
+        session_id = conversation_sessions.get(
+            self._session_scope_key(
+                agent_id=agent_id,
+                mode=mode,
+                model_name=model_name,
+            )
+        )
+        normalized_session_id = str(session_id or "").strip()
+        return normalized_session_id or None
+
+    def save_session_id(
+        self,
+        *,
+        user_id: str,
+        conversation_id: str | None,
+        agent_id: str,
+        mode: str,
+        model_name: str | None = None,
+        session_id: str,
+    ) -> None:
+        normalized_conversation_id = str(conversation_id or "").strip()
+        normalized_session_id = str(session_id or "").strip()
+        if not normalized_conversation_id or not normalized_session_id:
+            return
+
+        payload = self._read_user_payload(user_id)
+        chats = payload.get("chats")
+        sessions = payload.get("sessions")
+        normalized_chats = [
+            self._normalize_chat(item) for item in chats if isinstance(item, dict)
+        ]
+        if not isinstance(sessions, dict):
+            sessions = {}
+
+        conversation_sessions = sessions.get(normalized_conversation_id)
+        if not isinstance(conversation_sessions, dict):
+            conversation_sessions = {}
+
+        conversation_sessions[
+            self._session_scope_key(
+                agent_id=agent_id,
+                mode=mode,
+                model_name=model_name,
+            )
+        ] = normalized_session_id
+        sessions[normalized_conversation_id] = conversation_sessions
+
+        payload = {
+            **{
+                key: value
+                for key, value in payload.items()
+                if key not in {"user_id", "chats", "sessions"}
+            },
+            "user_id": str(user_id or "").strip() or "browser-user",
+            "chats": normalized_chats,
+            "sessions": sessions,
+        }
+        self._write_user_payload(user_id, payload)
+
     def _user_file(self, user_id: str) -> Path:
         normalized_user = _SAFE_USER_PATTERN.sub(
             "_",
@@ -99,3 +197,63 @@ class ConversationStore:
         temp_path = path.with_suffix("{suffix}.tmp".format(suffix=path.suffix))
         temp_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         temp_path.replace(path)
+
+    def _mark_embeddings_dirty(self, user_id: str) -> None:
+        try:
+            from core.retrieval.index import LocalEmbeddingIndex
+
+            LocalEmbeddingIndex(self.root.parent / ".embeddings").mark_dirty(
+                "conversations",
+                key=user_id,
+            )
+        except Exception:
+            return
+
+    def _normalize_chat(self, chat: dict[str, Any]) -> dict[str, Any]:
+        normalized = dict(chat)
+        normalized.pop("sessionIds", None)
+        return normalized
+
+    def _prune_sessions(
+        self,
+        sessions: Any,
+        conversation_ids: set[str],
+    ) -> dict[str, dict[str, str]]:
+        if not isinstance(sessions, dict):
+            return {}
+
+        pruned: dict[str, dict[str, str]] = {}
+        for conversation_id, scoped_sessions in sessions.items():
+            normalized_conversation_id = str(conversation_id or "").strip()
+            if (
+                not normalized_conversation_id
+                or normalized_conversation_id not in conversation_ids
+                or not isinstance(scoped_sessions, dict)
+            ):
+                continue
+
+            normalized_scoped_sessions = {
+                str(scope or "").strip(): str(session_id or "").strip()
+                for scope, session_id in scoped_sessions.items()
+                if str(scope or "").strip() and str(session_id or "").strip()
+            }
+            if normalized_scoped_sessions:
+                pruned[normalized_conversation_id] = normalized_scoped_sessions
+
+        return pruned
+
+    def _session_scope_key(
+        self,
+        *,
+        agent_id: str,
+        mode: str,
+        model_name: str | None = None,
+    ) -> str:
+        normalized_agent_id = str(agent_id or "").strip() or "__default_agent__"
+        normalized_mode = str(mode or "").strip() or "direct"
+        normalized_model_name = str(model_name or "").strip() or "__default_model__"
+        return "{agent_id}::{mode}::{model_name}".format(
+            agent_id=normalized_agent_id,
+            mode=normalized_mode,
+            model_name=normalized_model_name,
+        )

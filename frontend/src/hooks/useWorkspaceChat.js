@@ -2,6 +2,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } f
 
 import {
   fetchAgents,
+  fetchConversationSession,
   fetchConversations,
   fetchHealth,
   invokeAi,
@@ -23,10 +24,8 @@ import {
   createUserMessage,
   filterTree,
   normalizeAgentTree,
-  normalizeRuntimeMode,
   resolveChatRuntimeMode,
 } from "../lib/chatWorkspace";
-import { sanitizeModelId } from "../lib/preferences";
 
 const EXECUTION_EVENT_TYPES = new Set([
   "thinking_step",
@@ -37,11 +36,6 @@ const EXECUTION_EVENT_TYPES = new Set([
   "model_started",
   "error",
 ]);
-
-function buildSessionKey(userId, agentId, runtimeMode, modelId) {
-  const normalizedModelId = sanitizeModelId(modelId) || "__default_model__";
-  return `${userId}::${agentId}::${normalizeRuntimeMode(runtimeMode)}::${normalizedModelId}`;
-}
 
 export function useWorkspaceChat(userId, responseStreaming, modelId) {
   const [tree, setTree] = useState([]);
@@ -59,9 +53,12 @@ export function useWorkspaceChat(userId, responseStreaming, modelId) {
     state: "checking",
     message: "Checking the agent service.",
   });
+  const [activeSessionId, setActiveSessionId] = useState("");
+  const [sessionLoading, setSessionLoading] = useState(false);
   const [error, setError] = useState("");
   const deferredSearch = useDeferredValue(searchText);
   const loadRequestRef = useRef(0);
+  const sessionRequestRef = useRef(0);
   const pendingAssistantTextRef = useRef(new Map());
   const flushAssistantFrameRef = useRef(0);
   const persistTimeoutRef = useRef(0);
@@ -94,7 +91,6 @@ export function useWorkspaceChat(userId, responseStreaming, modelId) {
       titleSource: String(chat.titleSource || "default"),
       agentId,
       runtimeMode: resolveChatRuntimeMode(agent, chat.runtimeMode),
-      sessionIds: chat.sessionIds && typeof chat.sessionIds === "object" ? chat.sessionIds : {},
       messages: normalizedMessages,
       updatedAt: Number(chat.updatedAt) || Date.now(),
     };
@@ -214,6 +210,7 @@ export function useWorkspaceChat(userId, responseStreaming, modelId) {
       if (flushAssistantFrameRef.current) {
         window.cancelAnimationFrame(flushAssistantFrameRef.current);
       }
+      sessionRequestRef.current += 1;
       pendingAssistantTextRef.current.clear();
       loadRequestRef.current += 1;
     };
@@ -252,9 +249,6 @@ export function useWorkspaceChat(userId, responseStreaming, modelId) {
     () => resolveChatRuntimeMode(activeAgent, activeChat?.runtimeMode || ""),
     [activeAgent, activeChat?.runtimeMode],
   );
-  const activeSessionId = activeChat?.sessionIds?.[
-    buildSessionKey(userId, activeAgentId, activeRuntimeMode, modelId)
-  ] || "";
   const orchestrationAvailable = agentSupportsOrchestration(activeAgent);
   const isSending = activeChat ? runningChatIds.has(activeChat.id) : false;
   const isRefreshingTitle = activeChat ? retitlingChatIds.has(activeChat.id) : false;
@@ -262,6 +256,49 @@ export function useWorkspaceChat(userId, responseStreaming, modelId) {
     () => filterTree(tree, deferredSearch),
     [tree, deferredSearch],
   );
+
+  useEffect(() => {
+    const chatId = String(activeChat?.id || "").trim();
+    const agentId = String(activeAgentId || "").trim();
+    if (!chatId || !agentId) {
+      sessionRequestRef.current += 1;
+      setActiveSessionId("");
+      setSessionLoading(false);
+      return undefined;
+    }
+
+    const requestId = sessionRequestRef.current + 1;
+    sessionRequestRef.current = requestId;
+    setSessionLoading(true);
+
+    void fetchConversationSession({
+      userId,
+      conversationId: chatId,
+      agentId,
+      mode: activeRuntimeMode,
+      modelId,
+    }).then((payload) => {
+      if (sessionRequestRef.current !== requestId) {
+        return;
+      }
+
+      setActiveSessionId(String(payload?.session_id || "").trim());
+      setSessionLoading(false);
+    }).catch(() => {
+      if (sessionRequestRef.current !== requestId) {
+        return;
+      }
+
+      setActiveSessionId("");
+      setSessionLoading(false);
+    });
+
+    return () => {
+      if (sessionRequestRef.current === requestId) {
+        sessionRequestRef.current += 1;
+      }
+    };
+  }, [activeChat?.id, activeAgentId, activeRuntimeMode, modelId, userId]);
 
   const updateChat = (chatId, updater) => {
     setChats((prev) => prev.map((chat) => (chat.id === chatId ? updater(chat) : chat)));
@@ -614,21 +651,9 @@ export function useWorkspaceChat(userId, responseStreaming, modelId) {
         modelId,
         conversationId: chatId,
         message: text,
-        sessionId: activeSessionId || null,
         userId,
         stream: responseStreaming,
         onEvent: (type, payload = {}) => {
-          if (type === "run_started" && payload.session_id) {
-            updateChat(chatId, (chat) => ({
-              ...chat,
-              sessionIds: {
-                ...(chat.sessionIds || {}),
-                [buildSessionKey(userId, activeAgentId, runtimeMode, modelId)]: payload.session_id,
-              },
-              updatedAt: Date.now(),
-            }));
-          }
-
           if (type === "thinking_step") {
             appendThinkingEvent(chatId, assistantMessage.id, type, payload);
           }
@@ -687,21 +712,10 @@ export function useWorkspaceChat(userId, responseStreaming, modelId) {
           }
         },
       });
-
-      if (result.sessionId) {
-        updateChat(chatId, (chat) => ({
-          ...chat,
-          sessionIds: {
-            ...(chat.sessionIds || {}),
-            [buildSessionKey(
-              userId,
-              activeAgentId,
-              result.mode || runtimeMode,
-              modelId,
-            )]: result.sessionId,
-          },
-          updatedAt: Date.now(),
-        }));
+      if (result?.sessionId) {
+        sessionRequestRef.current += 1;
+        setActiveSessionId(String(result.sessionId).trim());
+        setSessionLoading(false);
       }
     } catch (err) {
       const key = `${chatId}:${assistantMessage.id}`;
@@ -735,8 +749,8 @@ export function useWorkspaceChat(userId, responseStreaming, modelId) {
     activeAgent,
     activeAgentId,
     activeRuntimeMode,
-    activeSessionId,
     activeChat,
+    activeSessionId,
     agents,
     agentDirectoryLoading,
     chats,
@@ -760,6 +774,7 @@ export function useWorkspaceChat(userId, responseStreaming, modelId) {
     retryInitialLoad: loadWorkspace,
     searchText,
     serviceHealth,
+    sessionLoading,
     setSearchText,
   };
 }

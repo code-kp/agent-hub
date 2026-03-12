@@ -81,6 +81,43 @@ export async function fetchConversations({
   return payload;
 }
 
+export async function fetchConversationSession({
+  userId = "browser-user",
+  conversationId,
+  agentId,
+  mode,
+  modelId,
+  modelName,
+  timeoutMs = AGENTS_TIMEOUT_MS,
+} = {}) {
+  const query = new URLSearchParams({
+    user_id: userId,
+    conversation_id: conversationId || "",
+    agent_id: agentId || "",
+  });
+  if (mode) {
+    query.set("mode", mode);
+  }
+  if (modelId) {
+    query.set("model_id", modelId);
+  }
+  if (modelName) {
+    query.set("model_name", modelName);
+  }
+
+  const response = await fetchWithTimeout(
+    `${API_BASE}/api/conversations/session?${query.toString()}`,
+    { timeoutMs },
+  );
+  const payload = await readResponsePayload(response);
+
+  if (!response.ok) {
+    throw new Error(payload.detail || payload.message || payload.text || `Failed to load session: ${response.status}`);
+  }
+
+  return payload;
+}
+
 export async function saveConversations({
   userId = "browser-user",
   chats = [],
@@ -196,7 +233,6 @@ export async function streamChat({
   modelName,
   conversationId,
   message,
-  sessionId,
   userId = "browser-user",
   stream = true,
   onEvent,
@@ -211,7 +247,6 @@ export async function streamChat({
       model_name: modelName,
       conversation_id: conversationId,
       message,
-      session_id: sessionId,
       user_id: userId,
       stream,
     }),
@@ -222,8 +257,8 @@ export async function streamChat({
     throw new Error(text || `Request failed with ${response.status}`);
   }
 
-  const nextSessionId = response.headers.get("X-Session-Id") || sessionId || null;
   const resolvedMode = response.headers.get("X-Mode") || mode || "direct";
+  const resolvedSessionId = response.headers.get("X-Session-Id") || null;
 
   if (!response.body) {
     throw new Error("Streaming body unavailable in this browser.");
@@ -249,7 +284,7 @@ export async function streamChat({
     }
   }
 
-  return { mode: resolvedMode, sessionId: nextSessionId };
+  return { mode: resolvedMode, sessionId: resolvedSessionId };
 }
 
 function parseSseFrame(frame) {
