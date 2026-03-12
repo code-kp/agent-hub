@@ -43,6 +43,7 @@ format = "ruff format ."
 test = "uv run python -m pytest"
 stop = "uv run python scripts/dev_supervisor.py stop"
 dev = "uv run python scripts/dev_supervisor.py run"
+embeddings-sync = "uv run python scripts/sync_embeddings.py"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

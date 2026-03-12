@@ -41,11 +41,14 @@ Optional model overrides:
 ```env
 MODEL_NAME=gemini-3.1-flash-lite-preview
 MODEL_BACKEND=litellm
+EMBEDDING_PROVIDER=google
+EMBEDDING_MODEL=text-embedding-004
 ```
 
 Notes:
 - `GOOGLE_API_KEY` is required for the default native Gemini path.
 - If you route through LiteLLM, also set the provider-specific key for that model, such as `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`.
+- Embedding sync and semantic retrieval read `EMBEDDING_PROVIDER` and `EMBEDDING_MODEL` from the environment. The offline `uv run poe embeddings-sync` command now loads the repo `.env` automatically.
 - After changing environment variables, restart `uv run poe dev` or `uv run poe backend`.
 
 ## Install

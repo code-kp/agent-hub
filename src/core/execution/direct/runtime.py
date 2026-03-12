@@ -9,7 +9,8 @@ import asyncio
 import contextlib
 import contextvars
 import os
-from typing import Any, Dict, Optional
+from pathlib import Path
+from typing import Any, Dict, Optional, Sequence
 from uuid import uuid4
 
 from google.adk.sessions import InMemorySessionService
@@ -27,10 +28,13 @@ import core.registry as registry
 import core.execution.shared.adk as runtime_adk
 import core.execution.shared.models as runtime_models
 import core.execution.direct.prompts as runtime_prompts
+import core.execution.shared.request_context as request_context
 import core.execution.shared.tooling as runtime_tooling
 import core.execution.shared.types as runtime_types
 import core.execution.shared.usage as runtime_usage
 import core.skills.context as skills_context
+import core.retrieval.conversations as retrieval_conversations
+import core.retrieval.turns as retrieval_turns
 import core.skills.resolver as skills_resolver
 import core.skills.store as skills_store
 import core.stream.messages as stream_messages
@@ -77,6 +81,14 @@ class DirectAgentRuntime:
             ),
             default=skills_resolver.ResolvedSkillContext(),
         )
+        self._turn_context: contextvars.ContextVar[
+            retrieval_turns.TurnContextBundle
+        ] = contextvars.ContextVar(
+            "turn_context_{agent_id}".format(
+                agent_id=record.agent_id.replace(".", "_")
+            ),
+            default=retrieval_turns.TurnContextBundle(),
+        )
         self._tool_guardrails: contextvars.ContextVar[
             Optional[guardrails_module.ToolLoopGuardrails]
         ] = contextvars.ContextVar(
@@ -103,6 +115,12 @@ class DirectAgentRuntime:
         )
         self.skill_store = self._load_skill_store()
         self.skill_resolver = skills_resolver.SkillResolver(self.skill_store)
+        self.turn_context_resolver = retrieval_turns.TurnContextResolver(
+            retrieval_conversations.ConversationSemanticRetriever(
+                conversations_root=self._conversation_root(),
+                embeddings_root=self._embeddings_root(),
+            )
+        )
         self.memory_manager = memory_module.MemoryManager(
             agent_id=self.record.agent_id,
             model_name=self.model_name,
@@ -173,6 +191,15 @@ class DirectAgentRuntime:
     def _load_skill_store(self) -> skills_store.SkillStore:
         return skills_store.SkillStore(self.record.project_root / "skills")
 
+    def _workspace_root(self) -> Path:
+        return self.record.project_root.parent.parent
+
+    def _conversation_root(self) -> Path:
+        return self._workspace_root() / ".conversations"
+
+    def _embeddings_root(self) -> Path:
+        return self._workspace_root() / ".embeddings"
+
     def _build_adk_agent(self):
         instruction = runtime_prompts.build_agent_instruction(
             definition=self.definition,
@@ -212,7 +239,7 @@ class DirectAgentRuntime:
     def _before_model_callback(self, callback_context: Any, llm_request: Any) -> Any:
         runtime_prompts.apply_runtime_context(
             llm_request,
-            self._resolved_skills.get(),
+            self._ensure_turn_context_var().get(),
             conversation_history=self._conversation_history.get(),
             memory_snapshot=self._conversation_memory.get(),
         )
@@ -354,9 +381,11 @@ class DirectAgentRuntime:
         message: str,
         user_id: str,
         session_id: Optional[str] = None,
+        conversation_id: Optional[str] = None,
         history: Optional[list[dict[str, Any]]] = None,
         stream: bool = True,
     ):
+        active_conversation_id = conversation_id or request_context.current_conversation_id()
         active_session_id = session_id or str(uuid4())
         event_stream = stream_progress.EventStream()
         asyncio.create_task(
@@ -365,6 +394,7 @@ class DirectAgentRuntime:
                 message=message,
                 user_id=user_id,
                 session_id=active_session_id,
+                conversation_id=active_conversation_id,
                 history=history or [],
                 stream_output=stream,
             )
@@ -377,11 +407,13 @@ class DirectAgentRuntime:
         message: str,
         user_id: str,
         session_id: str,
+        conversation_id: Optional[str] = None,
         history: Optional[list[dict[str, Any]]] = None,
         stream_output: bool = True,
     ) -> None:
         stream_token = stream_progress.bind_progress_stream(stream)
         resolved_token: Optional[contextvars.Token] = None
+        turn_context_token: Optional[contextvars.Token] = None
         tool_guardrails_token: Optional[contextvars.Token] = None
         skill_store_token: Optional[contextvars.Token] = None
         history_token: Optional[contextvars.Token] = None
@@ -395,6 +427,7 @@ class DirectAgentRuntime:
         )
 
         try:
+            turn_context_var = self._ensure_turn_context_var()
             skill_store_token = skills_context.bind_skill_store(self.skill_store)
             tool_guardrails_token = self._tool_guardrails.set(
                 guardrails_module.ToolLoopGuardrails(self.execution)
@@ -409,15 +442,17 @@ class DirectAgentRuntime:
                 seed_history=self._conversation_history.get(),
             )
             memory_token = self._conversation_memory.set(memory_snapshot)
-            resolved_context = await self._prepare_turn(
+            turn_context = await self._prepare_turn(
                 stream=stream,
                 message=message,
                 user_id=user_id,
                 session_id=session_id,
+                conversation_id=conversation_id,
                 history=self._conversation_history.get(),
                 memory_snapshot=memory_snapshot,
             )
-            resolved_token = self._resolved_skills.set(resolved_context)
+            resolved_token = self._resolved_skills.set(turn_context.skills)
+            turn_context_token = turn_context_var.set(turn_context)
 
             if not os.getenv("GOOGLE_API_KEY"):
                 message_text = self._missing_credentials_message()
@@ -436,7 +471,7 @@ class DirectAgentRuntime:
                 message=message,
                 user_id=user_id,
                 session_id=session_id,
-                resolved_context=resolved_context,
+                resolved_context=turn_context.skills,
                 hook_state=hook_state,
                 stream_output=stream_output,
                 usage_aggregator=usage_aggregator,
@@ -497,6 +532,8 @@ class DirectAgentRuntime:
         finally:
             if resolved_token is not None:
                 self._resolved_skills.reset(resolved_token)
+            if turn_context_token is not None:
+                self._turn_context.reset(turn_context_token)
             if tool_guardrails_token is not None:
                 self._tool_guardrails.reset(tool_guardrails_token)
             if skill_store_token is not None:
@@ -515,9 +552,10 @@ class DirectAgentRuntime:
         message: str,
         user_id: str,
         session_id: str,
+        conversation_id: Optional[str],
         history: list[dict[str, str]],
         memory_snapshot: memory_module.MemorySnapshot,
-    ) -> skills_resolver.ResolvedSkillContext:
+    ) -> retrieval_turns.TurnContextBundle:
         await stream.emit(
             "run_started",
             {
@@ -552,13 +590,17 @@ class DirectAgentRuntime:
                 state="done",
                 agent_id=self.record.agent_id,
             )
-        resolved_context = await asyncio.to_thread(
-            self._resolve_skills, message, user_id
+        turn_context = await asyncio.to_thread(
+            self._resolve_turn_context,
+            message,
+            user_id,
+            conversation_id,
+            history,
         )
         await stream_progress.emit_debug_event(
             "skill_context_selected",
             agent_id=self.record.agent_id,
-            skills=skills_resolver.serialize_resolved_skills(resolved_context),
+            skills=skills_resolver.serialize_resolved_skills(turn_context.skills),
             chunks=[
                 {
                     "skill_id": chunk.skill_id,
@@ -566,12 +608,15 @@ class DirectAgentRuntime:
                     "heading": chunk.heading,
                     "preview": chunk.text[:220],
                 }
-                for chunk in resolved_context.chunks
+                for chunk in turn_context.skills.chunks
             ],
-            message=skills_resolver.describe_resolved_skill_context(resolved_context),
+            conversations=retrieval_turns.serialize_recalled_conversations(
+                turn_context
+            ),
+            message=retrieval_turns.describe_turn_context(turn_context),
         )
         skill_label, skill_detail, skill_state = runtime_prompts.skill_context_thinking(
-            resolved_context
+            turn_context
         )
         await stream_progress.emit_thinking_step(
             step_id="guidance",
@@ -580,14 +625,22 @@ class DirectAgentRuntime:
             state=skill_state,
             agent_id=self.record.agent_id,
         )
+        if turn_context.recalled_conversations:
+            await stream_progress.emit_thinking_step(
+                step_id="semantic_memory",
+                label="Recalling related conversations",
+                detail="Pulled in a few older conversation excerpts that look relevant to this question.",
+                state="done",
+                agent_id=self.record.agent_id,
+            )
         await stream_progress.emit_thinking_step(
             step_id="planning",
             label="Planning the approach",
-            detail=runtime_prompts.planning_thinking_detail(resolved_context),
+            detail=runtime_prompts.planning_thinking_detail(turn_context),
             state="done",
             agent_id=self.record.agent_id,
         )
-        return resolved_context
+        return turn_context
 
     async def _execute_model_turn(
         self,
@@ -845,11 +898,106 @@ class DirectAgentRuntime:
             )
 
     def _resolve_skills(
-        self, query: str, user_id: str
+        self,
+        query: str,
+        user_id: str,
+        query_vector: Sequence[float] | None = None,
     ) -> skills_resolver.ResolvedSkillContext:
         return self.skill_resolver.resolve(
             query=query,
             user_id=user_id,
             behavior_ids=self.definition.behavior,
             knowledge_ids=self.definition.knowledge,
+            query_vector=query_vector,
         )
+
+    def _resolve_turn_context(
+        self,
+        query: str,
+        user_id: str,
+        conversation_id: str | None,
+        history: Sequence[dict[str, str]] | None,
+    ) -> retrieval_turns.TurnContextBundle:
+        query_vector = self._shared_query_vector(query)
+        try:
+            skill_context = self._resolve_skills(
+                query,
+                user_id,
+                query_vector=query_vector,
+            )
+        except TypeError:
+            skill_context = self._resolve_skills(query, user_id)
+        resolver = self._ensure_turn_context_resolver()
+        return resolver.resolve(
+            query=query,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            agent_id=self.record.agent_id,
+            history=history,
+            skill_context=skill_context,
+            query_vector=query_vector,
+        )
+
+    def _shared_query_vector(
+        self,
+        query: str,
+    ) -> tuple[float, ...] | None:
+        semantic_retriever = getattr(
+            getattr(getattr(self, "skill_resolver", None), "semantic", None),
+            "retriever",
+            None,
+        )
+        skill_provider = getattr(semantic_retriever, "provider", None)
+        resolver = self._ensure_turn_context_resolver()
+        conversation_provider = getattr(
+            resolver.conversation_retriever.retriever,
+            "provider",
+            None,
+        )
+        if skill_provider is None or conversation_provider is None:
+            return None
+        if not bool(getattr(skill_provider, "is_available", False)):
+            return None
+        if not bool(getattr(conversation_provider, "is_available", False)):
+            return None
+        if (
+            str(getattr(skill_provider, "name", "") or "").strip()
+            != str(getattr(conversation_provider, "name", "") or "").strip()
+            or str(getattr(skill_provider, "model_name", "") or "").strip()
+            != str(getattr(conversation_provider, "model_name", "") or "").strip()
+        ):
+            return None
+        try:
+            if semantic_retriever is None:
+                return None
+            return tuple(semantic_retriever.embed_query(query) or ()) or None
+        except Exception:
+            return None
+
+    def _ensure_turn_context_var(
+        self,
+    ) -> contextvars.ContextVar[retrieval_turns.TurnContextBundle]:
+        context_var = getattr(self, "_turn_context", None)
+        if context_var is not None:
+            return context_var
+        context_var = contextvars.ContextVar(
+            "turn_context_{agent_id}".format(
+                agent_id=self.record.agent_id.replace(".", "_")
+            ),
+            default=retrieval_turns.TurnContextBundle(),
+        )
+        self._turn_context = context_var
+        return context_var
+
+    def _ensure_turn_context_resolver(self) -> retrieval_turns.TurnContextResolver:
+        resolver = getattr(self, "turn_context_resolver", None)
+        if resolver is not None:
+            return resolver
+        resolver = retrieval_turns.TurnContextResolver(
+            retrieval_conversations.ConversationSemanticRetriever(
+                conversations_root=self._conversation_root(),
+                embeddings_root=self._embeddings_root(),
+            )
+        )
+        self.turn_context_resolver = resolver
+        return resolver

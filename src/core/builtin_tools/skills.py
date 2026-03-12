@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from core.contracts.tools import ToolModule, register_tool_class
+from core.retrieval.skills import SkillSemanticRetriever
 from core.skills.context import current_skill_store
 
 
@@ -28,7 +29,10 @@ class SearchSkillsTool(ToolModule):
         self.progress.debug(
             "Searching indexed skill chunks.", query=query, max_results=max_results
         )
-        results = store.search(query=query, max_results=max_results)
+        results = SkillSemanticRetriever(store).search(
+            query=query,
+            max_results=max_results,
+        )
         self.progress.think(
             "Relevant guidance found",
             detail="Found {count} likely match(es) in the shared guidance library.".format(

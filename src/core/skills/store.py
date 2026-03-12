@@ -110,6 +110,20 @@ class SkillStore:
             for skill in self.list_skills()
         ]
 
+    def list_chunks(self) -> List[SkillChunk]:
+        self.refresh()
+        return list(self._chunks)
+
+    def get_chunk(self, chunk_id: str) -> Optional[SkillChunk]:
+        self.refresh()
+        normalized = str(chunk_id or "").strip()
+        if not normalized:
+            return None
+        for chunk in self._chunks:
+            if chunk.chunk_id == normalized:
+                return chunk
+        return None
+
     def select_relevant_chunks(
         self,
         query: str,

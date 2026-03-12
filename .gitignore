@@ -13,3 +13,4 @@ frontend/dist/
 .dev-supervisor.json
 
 .conversations/
+.embeddings/

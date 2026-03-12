@@ -280,6 +280,7 @@ class AgentPlatform:
         message: str,
         user_id: str,
         session_id: Optional[str],
+        conversation_id: Optional[str] = None,
         history: Optional[Sequence[Mapping[str, Any]]] = None,
         stream: bool = True,
     ):
@@ -292,6 +293,7 @@ class AgentPlatform:
             message=message,
             user_id=user_id,
             session_id=session_id,
+            conversation_id=conversation_id,
             history=history,
             stream=stream,
         )
@@ -311,6 +313,12 @@ class AgentPlatform:
             content=content,
             uploader_id=uploader_id,
             namespace=namespace,
+        )
+        from core.retrieval.index import LocalEmbeddingIndex
+
+        LocalEmbeddingIndex(self.workspace_root.parent.parent / ".embeddings").mark_dirty(
+            "skills",
+            key=definition.id,
         )
         self.refresh_skills()
         return self._serialize_skill(definition)
